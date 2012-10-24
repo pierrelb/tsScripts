@@ -2,59 +2,69 @@ import os
 import logging
 import openbabel
 from subprocess import Popen
+from collections import defaultdict
 
 import rmgpy
 from rmgpy.molecule import Molecule
 from rmgpy.qm.main import QMCalculator
 from rmgpy.qm.molecule import Geometry
 from rmgpy.qm.reaction import QMReaction
-
-from collections import defaultdict
+from rmgpy.data.kinetics import KineticsFamily, ReactionRecipe
 
 import rdkit
 
-"""
-CC.[CH3] to [CH2]C.C
-"""
-family = 'H_Abstraction'
-
-reactant = """
-1  *1 C 0 {2,S} {3,S} {4,S} {5,S}
-2     C 0 {1,S} {6,S} {7,S} {8,S}
-3  *2 H 0 {1,S}
-4     H 0 {1,S}
-5     H 0 {1,S}
-6     H 0 {2,S}
-7     H 0 {2,S}
-8     H 0 {2,S}
-9  *3 C 1 {10,S} {11,S} {12,S}
-10    H 0 {9,S}
-11    H 0 {9,S}
-12    H 0 {9,S}
-"""
-
-product = """
-1  *1 C 1 {2,S} {4,S} {5,S}
-2     C 0 {1,S} {6,S} {7,S} {8,S}
-3  *2 H 0 {9,S}
-4     H 0 {1,S}
-5     H 0 {1,S}
-6     H 0 {2,S}
-7     H 0 {2,S}
-8     H 0 {2,S}
-9  *3 C 0 {3,S} {10,S} {11,S} {12,S}
-10    H 0 {9,S}
-11    H 0 {9,S}
-12    H 0 {9,S}
-"""
-
+# script to prep ts structures
 actions = [
             ['BREAK_BOND', '*1', 'S', '*2'],
             ['FORM_BOND', '*2', 'S', '*3'],
             ['GAIN_RADICAL', '*1', '1'],
             ['LOSE_RADICAL', '*3', '1']
             ]
-#########################################################################
+
+family = 'H_Abstraction'
+
+reactRecipe = ReactionRecipe(actions)
+
+template = KineticsFamily(forwardRecipe=reactRecipe)
+
+trusted = open('../../RMG-database/input/kinetics/families/H_Abstraction/depository.py')
+
+lines = trusted.readlines()
+k = 0
+idx = 0
+reactants1 = defaultdict(list)
+reactants2 = defaultdict(list)
+for line in lines:
+    k += 1
+    if line.startswith('    reactant1 ='):
+        idx += 1
+        for num in range(k, k+100):
+            if lines[num].find('{') != -1 or lines[num].find('*') != -1:
+                reactants1[idx].append(lines[num])
+            elif lines[num].find(',') != -1:
+                break
+    elif line.startswith('    reactant2 ='):
+        for num in range(k, k+100):
+            if lines[num].find('{') != -1 or lines[num].find('*') != -1:
+                reactants2[idx].append(lines[num])
+            elif lines[num].find(',') != -1:
+                break
+
+tsStructures = list()
+for idx in range(1, len(reactants1) + 1):
+    r1 = ''
+    r2 = ''
+    for line in reactants1[idx]:
+        r1 = r1 + line
+    for line in reactants2[idx]:
+        r2 = r2 + line
+    r1 = Molecule().fromAdjacencyList(r1)
+    r2 = Molecule().fromAdjacencyList(r2)
+    rStruct = [r1, r2]
+    pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
+    tsStructures.append(tsStruct)
+    
+########################################################################################    
 
 inputFileExtension = '.gjf'
 outputFileExtension = '.out'
@@ -105,7 +115,7 @@ def inputFileKeywords(attempt):
         attempt -= scriptAttempts
     return keywords[attempt-1]
 
-def run():
+def run(executablePath, inputFilePath, outputFilePath):
     # submits the input file to Gaussian
     process = Popen([executablePath, inputFilePath, outputFilePath])
     process.communicate()# necessary to wait for executable termination!
@@ -133,8 +143,8 @@ def getRDKitMol(geometry):
     Check there is no RDKit mol file already made. If so, use rdkit to make a rdmol from
     a mol file. If not, make rdmol from geometry.
     """ 
-    if not os.path.exists(geometry.getCrudeMolFilePath()):
-        geometry.generateRDKitGeometries()
+    #if not os.path.exists(geometry.getCrudeMolFilePath()):
+    geometry.generateRDKitGeometries()
     rdKitMol = rdkit.Chem.MolFromMolFile(geometry.getCrudeMolFilePath(), removeHs=False)      
 
     return rdKitMol
@@ -278,7 +288,7 @@ def writeInputFile():
         gaussianFile.write(input_string)
         gaussianFile.write('\n')
 
-def writeQST2InputFile():
+def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP):
     chk_file = '%chk=' + inputFilePath.split('.')[0]
     obrConversion = openbabel.OBConversion()
     obrConversion.SetInAndOutFormats("mol", "gjf")
@@ -296,7 +306,7 @@ def writeQST2InputFile():
     
     # all of the first molecule, and remove the first 2 lines (the '\n') from the second
     input_string = obrConversion.WriteString(molR) + obpConversion.WriteString(molP)[2:]
-    top_keys = "# pm6 opt=(qst2,nofreeze,calcall,tight,noeigentest) nosymm"
+    top_keys = "# pm6 opt=(qst2,calcfc,nofreeze) nosymm"
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
@@ -304,7 +314,7 @@ def writeQST2InputFile():
         gaussianFile.write(input_string)
         gaussianFile.write('\n')
 
-def writeTSInputFile():
+def writeTSInputFile(inputFilePath, geometryR, geometryP):
     chk_file = '%chk=' + inputFilePath.split('.')[0]
     top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest) geom=allcheck guess=check nosymm"
     title = ' ' + geometryR.uniqueIDlong + ' ' + geometryP.uniqueIDlong
@@ -389,6 +399,9 @@ def convertOutputToInput():
         gaussianFile.write(bottom_keys)
         gaussianFile.write('\n')
 
+def generateKineticData():
+    pass
+
 def editMatrix(bm, lbl1, lbl2, num, diff):
     if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
         bm[lbl2][lbl1] = num
@@ -398,141 +411,76 @@ def editMatrix(bm, lbl1, lbl2, num, diff):
         bm[lbl2][lbl1] = bm[lbl1][lbl2] + diff
     
     return bm
-        
-def generateKineticData():
-    pass
+
+def calculate(TS, count):
+    quantumMechanics = QMCalculator()
+    quantumMechanics.settings.software = 'gaussian'
+    quantumMechanics.settings.fileStore = 'QMfiles'
+    quantumMechanics.settings.scratchDirectory = 'scratch'
+    quantumMechanics.settings.onlyCyclics = False
+    quantumMechanics.settings.maxRadicalNumber = 0
     
-#########################################################################
-
-reactant = Molecule().fromAdjacencyList(reactant)
-newadjlist = matchAtoms(reactant)
-padjlist = adjlist(atoms(newadjlist))
-product = Molecule().fromAdjacencyList(padjlist)
-
-quantumMechanics = QMCalculator()
-quantumMechanics.settings.software = 'gaussian'
-quantumMechanics.settings.fileStore = 'QMfiles'
-quantumMechanics.settings.scratchDirectory = 'scratch'
-quantumMechanics.settings.onlyCyclics = False
-quantumMechanics.settings.maxRadicalNumber = 0
-
-reactant = fixSortLabel(reactant)
-product = fixSortLabel(product)
-
-rRDMol, rBM, rMult = generateBoundsMatrix(reactant, quantumMechanics.settings)
-pRDMol, pBM, pMult = generateBoundsMatrix(product, quantumMechanics.settings)
-
-#edit bounds distances to align reacting atoms
-if family.lower() == 'h_abstraction':
-    lbl1 = reactant.getLabeledAtom('*1').sortingLabel
-    lbl2 = reactant.getLabeledAtom('*2').sortingLabel
-    lbl3 = reactant.getLabeledAtom('*3').sortingLabel
+    reactant = fixSortLabel(TS[0])
+    product = fixSortLabel(TS[1])
+    rRDMol, rBM, rMult = generateBoundsMatrix(reactant, quantumMechanics.settings)
+    pRDMol, pBM, pMult = generateBoundsMatrix(product, quantumMechanics.settings)
     
-    rBM = editMatrix(rBM, lbl1, lbl3, 2.5, 0.2)
-    rBM = editMatrix(rBM, lbl2, lbl3, 2.0, 0.1)
+    # edit bounds distances to align reacting atoms
+    if family.lower() == 'h_abstraction':
+        lbl1 = reactant.getLabeledAtom('*1').sortingLabel
+        lbl2 = reactant.getLabeledAtom('*2').sortingLabel
+        lbl3 = reactant.getLabeledAtom('*3').sortingLabel
     
-    pBM = editMatrix(pBM, lbl1, lbl2, 2.0, 0.1)
-    pBM = editMatrix(pBM, lbl1, lbl3, 2.5, 0.2)
+        rBM = editMatrix(rBM, lbl1, lbl3, 2.5, 0.2)
+        rBM = editMatrix(rBM, lbl2, lbl3, 2.0, 0.1)
+    
+        pBM = editMatrix(pBM, lbl1, lbl2, 2.0, 0.1)
+        pBM = editMatrix(pBM, lbl1, lbl3, 2.5, 0.2)
+    
+    for i in range(0, len(rBM)):
+            for k in range(0, len(rBM)):
+                if rBM[i][k] == 1000.:
+                    rBM[i][k] = 2 * rBM[k][i]
+                if pBM[i][k] == 1000.:
+                    pBM[i][k] = 2 * pBM[k][i]
+                        
+    rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
+    rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
+    
+    rsorted_atom_list = reactant.vertices[:]
+    psorted_atom_list = product.vertices[:]
+    qmcalcR = rmgpy.qm.gaussian.GaussianMolPM3(reactant, quantumMechanics.settings)
+    qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
+    reactant.vertices = rsorted_atom_list
+    product.vertices = psorted_atom_list
+    
+    qmcalcR.createGeometry(rBM)
+    qmcalcP.createGeometry(pBM)
+    
+    geometryR = qmcalcR.geometry
+    geometryP = qmcalcR.geometry
+    
+    rinputFilePath = qmcalcR.inputFilePath
+    routputFilePath = qmcalcR.outputFilePath
+    rmolFilePathForCalc = qmcalcR.getMolFilePathForCalculation(attempt)
+    
+    pinputFilePath = qmcalcP.inputFilePath
+    poutputFilePath = qmcalcR.outputFilePath
+    pmolFilePathForCalc = qmcalcP.getMolFilePathForCalculation(attempt)
+    
+    inputFilePath = rinputFilePath
+    outputFilePath = poutputFilePath
+    tsFilePath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.gjf')
+    tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.out')
+    writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP)
+    run(executablePath, tsFilePath, tsOutPath)
+    # 
+    # writeTSInputFile(tsFilePath, geometryR, geometryP)
+    # run(executablePath, tsFilePath, tsOutPath)
 
-for i in range(0, len(rBM)):
-        for k in range(0, len(rBM)):
-            if rBM[i][k] == 1000.:
-                rBM[i][k] = 2 * rBM[k][i]
-            if pBM[i][k] == 1000.:
-                pBM[i][k] = 2 * pBM[k][i]
-
-rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
-rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
-
-rsorted_atom_list = reactant.vertices[:]
-psorted_atom_list = product.vertices[:]
-qmcalcR = rmgpy.qm.gaussian.GaussianMolPM3(reactant, quantumMechanics.settings)
-qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
-reactant.vertices = rsorted_atom_list
-product.vertices = psorted_atom_list
-
-qmcalcR.createGeometry(rBM)
-qmcalcP.createGeometry(pBM)
-
-geometryR = qmcalcR.geometry
-geometryP = qmcalcR.geometry
-
-rinputFilePath = qmcalcR.inputFilePath
-routputFilePath = qmcalcR.outputFilePath
-rmolFilePathForCalc = qmcalcR.getMolFilePathForCalculation(attempt)
-
-pinputFilePath = qmcalcP.inputFilePath
-poutputFilePath = qmcalcR.outputFilePath
-pmolFilePathForCalc = qmcalcP.getMolFilePathForCalculation(attempt)
-
-inputFilePath = rinputFilePath
-outputFilePath = poutputFilePath
-writeQST2InputFile()
-run()
-import ipdb; ipdb.set_trace()
-writeTSInputFile()
-#import ipdb; ipdb.set_trace()
-run()
-# writeInputFile()
-# run()
-# # i = 1
-# qmreact = QMReaction()
-# rdMol, tsBM, mult = qmreact.generateBoundsMatrix(tsBase, quantumMechanics.settings)
-# for action in actions:
-#     if action[0].lower() == 'break_bond':
-#         mk1 = action[1]
-#         mk2 = action[3]
-#     elif action[0].lower() == 'form_bond':
-#         mk3 = action[1]
-#         mk4 = action[3]
-# 
-# if mk1 == mk3:
-#     lbl1 = mk1
-#     lbl2 = mk2
-#     lbl3 = mk4
-# elif mk1 == mk4:
-#     lbl1 = mk1
-#     lbl2 = mk2
-#     lbl3 = mk3
-# elif mk2 == mk3:
-#     lbl1 = mk2
-#     lbl2 = mk1
-#     lbl3 = mk4
-# elif mk2 == mk4:
-#     lbl1 = mk2
-#     lbl2 = mk1
-#     lbl3 = mk3
-# 
-# lbl1 = tsBase.getLabeledAtom(lbl1).sortingLabel
-# lbl2 = tsBase.getLabeledAtom(lbl2).sortingLabel
-# lbl3 = tsBase.getLabeledAtom(lbl3).sortingLabel
-# 
-# if tsBM[lbl1][lbl2] > tsBM[lbl2][lbl1]:
-#     testDist = 3 * tsBM[lbl1][lbl2]
-# else:
-#     testDist = 3 * tsBM[lbl2][lbl1]
-# 
-# if tsBM[lbl1][lbl3] > tsBM[lbl3][lbl1]:
-#     if tsBM[lbl1][lbl3] > testDist:
-#         tsBM[lbl1][lbl3] = testDist
-# else:
-#     if tsBM[lbl3][lbl1] > testDist:
-#         tsBM[lbl3][lbl1] = testDist
-# 
-# rdkit.DistanceGeometry.DoTriangleSmoothing(tsBM)
-# 
-# tsGeom = Geometry(quantumMechanics.settings, 'transitionState', tsBase, mult)
-# tsGeom.generateRDKitGeometries(tsBM)
-# 
-# molFilePathForCalc = tsGeom.getRefinedMolFilePath()
-# inputFilePath = 'QMfiles/transitionState.gjf'
-# outputFilePath = 'QMfiles/transitionState.log'
-# chkFilePath = 'QMfiles/transitionState'
-# 
-# import ipdb; ipdb.set_trace()
-# writeModRedundantFile2()
-# while i in range(1, 11):
-#     
-#     convertOutputToInput()
-#     run()
-#     i += 1
+########################################################################################
+    
+count = 0
+for TS in tsStructures:
+    calculate(TS, count)
+    count += 1
