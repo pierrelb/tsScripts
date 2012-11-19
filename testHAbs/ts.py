@@ -157,7 +157,7 @@ def generateBoundsMatrix(molecule, settings):
     rdKitMol = getRDKitMol(geometry)
     boundsMatrix = rdkit.Chem.rdDistGeom.GetMoleculeBoundsMatrix(rdKitMol)
 
-    return rdKitMol, boundsMatrix, multiplicity
+    return rdKitMol, boundsMatrix, multiplicity, geometry
 
 def atoms(mol):
     atoms = {}
@@ -422,8 +422,8 @@ def calculate(TS, count):
     
     reactant = fixSortLabel(TS[0])
     product = fixSortLabel(TS[1])
-    rRDMol, rBM, rMult = generateBoundsMatrix(reactant, quantumMechanics.settings)
-    pRDMol, pBM, pMult = generateBoundsMatrix(product, quantumMechanics.settings)
+    rRDMol, rBM, rMult, rGeom = generateBoundsMatrix(reactant, quantumMechanics.settings)
+    pRDMol, pBM, pMult, pGeom = generateBoundsMatrix(product, quantumMechanics.settings)
     
     # edit bounds distances to align reacting atoms
     if family.lower() == 'h_abstraction':
@@ -458,7 +458,27 @@ def calculate(TS, count):
     qmcalcP.createGeometry(pBM)
     
     geometryR = qmcalcR.geometry
-    geometryP = qmcalcR.geometry
+    geometryP = pGeom
+    
+    """
+    Lines between the '###' below should help with the problem of overlaps during the double-ended
+    interpolation. Aligning the reactant and product geometries, then optimizing the product with
+    the bounds matrix should ensure the non-reacting atoms are in generally the same position.
+    """
+    ###
+    for atom in reactant.atoms:
+        i = atom.sortingLabel
+        pRDMol.GetConformer(0).SetAtomPosition(i, rRDMol.GetConformer(0).GetAtomPosition(i))
+    # psorted_atom_list = product.vertices[:]
+    # qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
+    # product.vertices = psorted_atom_list
+    atoms = len(pGeom.molecule.atoms)
+    distGeomAttempts=1
+    if atoms > 3:#this check prevents the number of attempts from being negative
+        distGeomAttempts = 5*(atoms-3) #number of conformer attempts is just a linear scaling with molecule size, due to time considerations in practice, it is probably more like 3^(n-3) or something like that
+    
+    pGeom.rd_embed(pRDMol, distGeomAttempts, pBM)
+    ###
     
     rinputFilePath = qmcalcR.inputFilePath
     routputFilePath = qmcalcR.outputFilePath

@@ -147,7 +147,7 @@ def generateBoundsMatrix(molecule, settings):
     rdKitMol = getRDKitMol(geometry)
     boundsMatrix = rdkit.Chem.rdDistGeom.GetMoleculeBoundsMatrix(rdKitMol)
 
-    return rdKitMol, boundsMatrix, multiplicity
+    return rdKitMol, boundsMatrix, multiplicity, geometry
 
 def atoms(mol):
     atoms = {}
@@ -419,8 +419,8 @@ quantumMechanics.settings.maxRadicalNumber = 0
 reactant = fixSortLabel(reactant)
 product = fixSortLabel(product)
 
-rRDMol, rBM, rMult = generateBoundsMatrix(reactant, quantumMechanics.settings)
-pRDMol, pBM, pMult = generateBoundsMatrix(product, quantumMechanics.settings)
+rRDMol, rBM, rMult, rGeom = generateBoundsMatrix(reactant, quantumMechanics.settings)
+pRDMol, pBM, pMult, pGeom = generateBoundsMatrix(product, quantumMechanics.settings)
 
 #edit bounds distances to align reacting atoms
 if family.lower() == 'h_abstraction':
@@ -445,17 +445,65 @@ rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
 rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
 
 rsorted_atom_list = reactant.vertices[:]
-psorted_atom_list = product.vertices[:]
 qmcalcR = rmgpy.qm.gaussian.GaussianMolPM3(reactant, quantumMechanics.settings)
-qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
 reactant.vertices = rsorted_atom_list
-product.vertices = psorted_atom_list
 
 qmcalcR.createGeometry(rBM)
-qmcalcP.createGeometry(pBM)
+# take the reactant geometry and apply the product bounds matrix
+# this should prevent non-reacting atom overlap
+
+for atom in reactant.atoms:
+    i = atom.sortingLabel
+    pRDMol.GetConformer(0).SetAtomPosition(i, rRDMol.GetConformer(0).GetAtomPosition(i))
+# psorted_atom_list = product.vertices[:]
+# qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
+# product.vertices = psorted_atom_list
+atoms = len(pGeom.molecule.atoms)
+distGeomAttempts=1
+if atoms > 3:#this check prevents the number of attempts from being negative
+    distGeomAttempts = 5*(atoms-3) #number of conformer attempts is just a linear scaling with molecule size, due to time considerations in practice, it is probably more like 3^(n-3) or something like that
+
+pGeom.rd_embed(pRDMol, distGeomAttempts, pBM)
+"""
+def createGeometry(self, boundsMatrix=None):
+    multiplicity = sum([i.radicalElectrons for i in self.molecule.atoms]) + 1
+    self.geometry = Geometry(self.settings, self.uniqueID, self.molecule, multiplicity, uniqueIDlong=self.uniqueIDlong)
+    self.geometry.generateRDKitGeometries(boundsMatrix)
+    return self.geometry
+    
+def generateRDKitGeometries(self, boundsMatrix=None):   
+    rdmol, rdAtIdx = self.rd_build()
+    
+    atoms = len(self.molecule.atoms)
+    distGeomAttempts=1
+    if atoms > 3:#this check prevents the number of attempts from being negative
+        distGeomAttempts = 5*(atoms-3) #number of conformer attempts is just a linear scaling with molecule size, due to time considerations in practice, it is probably more like 3^(n-3) or something like that
+    
+    rdmol, minEid = self.rd_embed(rdmol, distGeomAttempts, boundsMatrix)
+    self.save_coordinates(rdmol, minEid, rdAtIdx)
+    
+def rd_embed(self, rdmol, numConfAttempts, boundsMatrix=None):
+    if boundsMatrix == None:
+        AllChem.EmbedMultipleConfs(rdmol, numConfAttempts,randomSeed=1)
+        crude = Chem.Mol(rdmol.ToBinary())
+        rdmol, minEid = self.optimize(rdmol)
+    else:
+        try:
+            Pharm3D.EmbedLib.EmbedMol(rdmol, boundsMatrix, randomSeed=10)
+        except RuntimeError:
+            logging.error('Could not embed from bounds matrix')
+        crude = Chem.Mol(rdmol.ToBinary())
+        rdmol, minEid = self.optimize(rdmol, boundsMatrix)
+    
+    self.writeMolFile(crude, self.getCrudeMolFilePath(), minEid)
+    self.writeMolFile(rdmol, self.getRefinedMolFilePath(), minEid)
+    
+    return rdmol, minEid
+"""
+import ipdb; ipdb.set_trace()
 
 geometryR = qmcalcR.geometry
-geometryP = qmcalcR.geometry
+geometryP = pGeom
 
 rinputFilePath = qmcalcR.inputFilePath
 routputFilePath = qmcalcR.outputFilePath
@@ -469,7 +517,6 @@ inputFilePath = rinputFilePath
 outputFilePath = poutputFilePath
 writeQST2InputFile()
 run()
-import ipdb; ipdb.set_trace()
 writeTSInputFile()
 #import ipdb; ipdb.set_trace()
 run()
