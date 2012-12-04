@@ -63,7 +63,7 @@ for idx in range(1, len(reactants1) + 1):
     rStruct = [r1, r2]
     pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
     tsStructures.append(tsStruct)
-    
+
 ########################################################################################    
 
 inputFileExtension = '.gjf'
@@ -316,15 +316,15 @@ def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, 
 
 def writeTSInputFile(inputFilePath, geometryR, geometryP):
     chk_file = '%chk=' + inputFilePath.split('.')[0]
-    top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest) geom=allcheck guess=check nosymm"
+    top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest,cartesian) geom=allcheck guess=check nosymm"
     title = ' ' + geometryR.uniqueIDlong + ' ' + geometryP.uniqueIDlong
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
         gaussianFile.write(top_keys)
         gaussianFile.write('\n\n')
-        gaussianFile.write(title)
-        gaussianFile.write('\n\n')
+        # gaussianFile.write(title)
+        # gaussianFile.write('\n\n')
 
 def writeModRedundantFile():
     chk_file = '%chk=' + chkFilePath
@@ -437,29 +437,59 @@ def calculate(TS, count):
         pBM = editMatrix(pBM, lbl1, lbl2, 2.0, 0.1)
         pBM = editMatrix(pBM, lbl1, lbl3, 2.5, 0.2)
     
+    for atom in reactant.atoms[lbl1].bonds.keys():
+        chg = atom.sortingLabel
+        if chg != lbl2:    
+            if pBM[lbl1][chg] == 1000.:
+                pBM[lbl1][chg] = 2 * pBM[chg][lbl1]
+            elif pBM[chg][lbl1] == 1000.:
+                pBM[chg][lbl1] = 2 * pBM[lbl1][chg]
+    
+    for atom in reactant.atoms[lbl3].bonds.keys():
+        chg = atom.sortingLabel
+        if chg != lbl2:
+            if pBM[lbl3][chg] == 1000.:
+                pBM[lbl3][chg] = 2 * pBM[chg][lbl3]
+            elif pBM[chg][lbl3] == 1000.:
+                pBM[chg][lbl3] = 2 * pBM[lbl3][chg]
+    
+    # do same for products        
+    for atom in product.atoms[lbl1].bonds.keys():
+        chg = atom.sortingLabel
+        if chg != lbl2:
+            if rBM[lbl1][chg] == 1000.:
+                rBM[lbl1][chg] = 2 * rBM[chg][lbl1]
+            elif rBM[chg][lbl1] == 1000.:
+                rBM[chg][lbl1] = 2 * rBM[lbl1][chg]
+    
+    for atom in product.atoms[lbl3].bonds.keys():
+        chg = atom.sortingLabel
+        if chg != lbl2:
+            if rBM[lbl3][chg] == 1000.:
+                rBM[lbl3][chg] = 2 * rBM[chg][lbl3]
+            elif rBM[chg][lbl3] == 1000.:
+                rBM[chg][lbl3] = 2 * rBM[lbl3][chg]
+    
     for i in range(0, len(rBM)):
             for k in range(0, len(rBM)):
                 if rBM[i][k] == 1000.:
-                    rBM[i][k] = 2 * rBM[k][i]
+                    rBM[i][k] = 4 * rBM[k][i]
                 if pBM[i][k] == 1000.:
-                    pBM[i][k] = 2 * pBM[k][i]
+                    pBM[i][k] = 4 * pBM[k][i]
                         
     rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
     rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
     
     rsorted_atom_list = reactant.vertices[:]
-    psorted_atom_list = product.vertices[:]
     qmcalcR = rmgpy.qm.gaussian.GaussianMolPM3(reactant, quantumMechanics.settings)
-    qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
     reactant.vertices = rsorted_atom_list
+    
+    psorted_atom_list = product.vertices[:]
+    qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
     product.vertices = psorted_atom_list
     
     qmcalcR.createGeometry(rBM)
-    qmcalcP.createGeometry(pBM)
-    
-    geometryR = qmcalcR.geometry
-    geometryP = pGeom
-    
+    rRDMol = rdkit.Chem.MolFromMolFile(rGeom.getCrudeMolFilePath(), removeHs=False)
     """
     Lines between the '###' below should help with the problem of overlaps during the double-ended
     interpolation. Aligning the reactant and product geometries, then optimizing the product with
@@ -469,9 +499,7 @@ def calculate(TS, count):
     for atom in reactant.atoms:
         i = atom.sortingLabel
         pRDMol.GetConformer(0).SetAtomPosition(i, rRDMol.GetConformer(0).GetAtomPosition(i))
-    # psorted_atom_list = product.vertices[:]
-    # qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
-    # product.vertices = psorted_atom_list
+    
     atoms = len(pGeom.molecule.atoms)
     distGeomAttempts=1
     if atoms > 3:#this check prevents the number of attempts from being negative
@@ -479,6 +507,11 @@ def calculate(TS, count):
     
     pGeom.rd_embed(pRDMol, distGeomAttempts, pBM)
     ###
+    
+    qmcalcP.geometry = pGeom
+    
+    geometryR = qmcalcR.geometry
+    geometryP = qmcalcP.geometry
     
     rinputFilePath = qmcalcR.inputFilePath
     routputFilePath = qmcalcR.outputFilePath
@@ -494,9 +527,9 @@ def calculate(TS, count):
     tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.out')
     writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP)
     run(executablePath, tsFilePath, tsOutPath)
-    # 
-    # writeTSInputFile(tsFilePath, geometryR, geometryP)
-    # run(executablePath, tsFilePath, tsOutPath)
+    
+    writeTSInputFile(tsFilePath, geometryR, geometryP)
+    run(executablePath, tsFilePath, tsOutPath)
 
 ########################################################################################
     
