@@ -436,46 +436,6 @@ def calculate(TS, count):
     
         pBM = editMatrix(pBM, lbl1, lbl2, 2.0, 0.1)
         pBM = editMatrix(pBM, lbl1, lbl3, 2.5, 0.2)
-    
-    for atom in reactant.atoms[lbl1].bonds.keys():
-        chg = atom.sortingLabel
-        if chg != lbl2:    
-            if pBM[lbl1][chg] == 1000.:
-                pBM[lbl1][chg] = 2 * pBM[chg][lbl1]
-            elif pBM[chg][lbl1] == 1000.:
-                pBM[chg][lbl1] = 2 * pBM[lbl1][chg]
-    
-    for atom in reactant.atoms[lbl3].bonds.keys():
-        chg = atom.sortingLabel
-        if chg != lbl2:
-            if pBM[lbl3][chg] == 1000.:
-                pBM[lbl3][chg] = 2 * pBM[chg][lbl3]
-            elif pBM[chg][lbl3] == 1000.:
-                pBM[chg][lbl3] = 2 * pBM[lbl3][chg]
-    
-    # do same for products        
-    for atom in product.atoms[lbl1].bonds.keys():
-        chg = atom.sortingLabel
-        if chg != lbl2:
-            if rBM[lbl1][chg] == 1000.:
-                rBM[lbl1][chg] = 2 * rBM[chg][lbl1]
-            elif rBM[chg][lbl1] == 1000.:
-                rBM[chg][lbl1] = 2 * rBM[lbl1][chg]
-    
-    for atom in product.atoms[lbl3].bonds.keys():
-        chg = atom.sortingLabel
-        if chg != lbl2:
-            if rBM[lbl3][chg] == 1000.:
-                rBM[lbl3][chg] = 2 * rBM[chg][lbl3]
-            elif rBM[chg][lbl3] == 1000.:
-                rBM[chg][lbl3] = 2 * rBM[lbl3][chg]
-    
-    for i in range(0, len(rBM)):
-            for k in range(0, len(rBM)):
-                if rBM[i][k] == 1000.:
-                    rBM[i][k] = 4 * rBM[k][i]
-                if pBM[i][k] == 1000.:
-                    pBM[i][k] = 4 * pBM[k][i]
                         
     rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
     rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
