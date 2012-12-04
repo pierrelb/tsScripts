@@ -317,7 +317,6 @@ def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, 
 def writeTSInputFile(inputFilePath, geometryR, geometryP):
     chk_file = '%chk=' + inputFilePath.split('.')[0]
     top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest,cartesian) geom=allcheck guess=check nosymm"
-    title = ' ' + geometryR.uniqueIDlong + ' ' + geometryP.uniqueIDlong
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
