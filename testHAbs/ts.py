@@ -67,10 +67,54 @@ for idx in range(1, len(reactants1) + 1):
 ########################################################################################    
 inputFileExtension = '.gjf'
 qstOutputFileExtension = '.out'
-tsOutputFileExtension = '.log'
+outputFileExtension = '.log'
 executablePath = os.path.join(os.getenv('GAUSS_EXEDIR') , 'g09')
 attempt = 1
 
+usePolar = False
+
+keywords = [
+            "# pm3 opt=(verytight,gdiis) freq IOP(2/16=3)",
+            "# pm3 opt=(verytight,gdiis) freq IOP(2/16=3) IOP(4/21=2)",
+            "# pm3 opt=(verytight,calcfc,maxcyc=200) freq IOP(2/16=3) nosymm" ,
+            "# pm3 opt=(verytight,calcfc,maxcyc=200) freq=numerical IOP(2/16=3) nosymm",
+            "# pm3 opt=(verytight,gdiis,small) freq IOP(2/16=3)",
+            "# pm3 opt=(verytight,nolinear,calcfc,small) freq IOP(2/16=3)",
+            "# pm3 opt=(verytight,gdiis,maxcyc=200) freq=numerical IOP(2/16=3)",
+            "# pm3 opt=tight freq IOP(2/16=3)",
+            "# pm3 opt=tight freq=numerical IOP(2/16=3)",
+            "# pm3 opt=(tight,nolinear,calcfc,small,maxcyc=200) freq IOP(2/16=3)",
+            "# pm3 opt freq IOP(2/16=3)",
+            "# pm3 opt=(verytight,gdiis) freq=numerical IOP(2/16=3) IOP(4/21=200)",
+            "# pm3 opt=(calcfc,verytight,newton,notrustupdate,small,maxcyc=100,maxstep=100) freq=(numerical,step=10) IOP(2/16=3) nosymm",
+            "# pm3 opt=(tight,gdiis,small,maxcyc=200,maxstep=100) freq=numerical IOP(2/16=3) nosymm",
+            "# pm3 opt=(tight,gdiis,small,maxcyc=200,maxstep=100) freq=numerical IOP(2/16=3) nosymm",
+            "# pm3 opt=(verytight,gdiis,calcall,small,maxcyc=200) IOP(2/16=3) IOP(4/21=2) nosymm",
+            "# pm3 opt=(verytight,gdiis,calcall,small) IOP(2/16=3) nosymm",
+            "# pm3 opt=(calcall,small,maxcyc=100) IOP(2/16=3)",
+            ]
+
+@property
+def scriptAttempts():
+    "The number of attempts with different script keywords"
+    return len(keywords)
+
+@property
+def maxAttempts():
+    "The total number of attempts to try"
+    return 2 * len(keywords)
+
+def inputFileKeywords(attempt):
+    """
+    Return the top keywords for attempt number `attempt`.
+
+    NB. `attempt`s begin at 1, not 0.
+    """
+    assert attempt <= maxAttempts
+    if attempt > scriptAttempts:
+        attempt -= scriptAttempts
+    return keywords[attempt-1]
+    
 def run(executablePath, inputFilePath, outputFilePath):
     # submits the input file to Gaussian
     process = Popen([executablePath, inputFilePath, outputFilePath])
@@ -114,7 +158,30 @@ def generateBoundsMatrix(molecule, settings):
 
     return rdKitMol, boundsMatrix, multiplicity, geometry
 
-def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP):
+def writeInputFile(inputFilePath, molFilePathForCalc, geometry, attempt):
+    """
+    Using the :class:`Geometry` object, write the input file
+    for the `attmept`th attempt.
+    """
+
+    obConversion = openbabel.OBConversion()
+    obConversion.SetInAndOutFormats("mol", "gjf")
+    mol = openbabel.OBMol()
+
+    obConversion.ReadFile(mol, molFilePathForCalc )
+
+    mol.SetTitle(geometry.uniqueIDlong)
+    obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
+    input_string = obConversion.WriteString(mol)
+    top_keys = inputFileKeywords(attempt)
+    with open(inputFilePath, 'w') as gaussianFile:
+        gaussianFile.write(chk_file)
+        gaussianFile.write('\n')
+        gaussianFile.write(top_keys)
+        gaussianFile.write(input_string)
+        gaussianFile.write('\n')
+
+def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP, trial):
     chk_file = '%chk=' + inputFilePath.split('.')[0]
     obrConversion = openbabel.OBConversion()
     obrConversion.SetInAndOutFormats("mol", "gjf")
@@ -132,7 +199,10 @@ def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, 
 
     # all of the first molecule, and remove the first 2 lines (the '\n') from the second
     input_string = obrConversion.WriteString(molR) + obpConversion.WriteString(molP)[2:]
-    top_keys = "# pm6 opt=(qst2,nofreeze,calcall,tight,noeigentest) nosymm"
+    if trial == 1:
+        top_keys = "# pm6 opt=(qst2,nofreeze,calcall,tight,noeigentest) nosymm"
+    elif trial == 2:
+        top_keys = "# pm6 opt=(qst2,nofreeze,calcall,tight,noeigentest,cartesian) nosymm"
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
@@ -140,9 +210,12 @@ def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, 
         gaussianFile.write(input_string)
         gaussianFile.write('\n')
 
-def writeTSInputFile(inputFilePath):
+def writeTSInputFile(inputFilePath, trial):
     chk_file = '%chk=' + inputFilePath.split('.')[0]
-    top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest) geom=allcheck guess=check nosymm"
+    if trial == 1:
+        top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest) geom=allcheck guess=check nosymm"
+    elif trial == 2:
+        top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest,cartesian) geom=allcheck guess=check nosymm"
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
@@ -159,6 +232,20 @@ def editMatrix(bm, lbl1, lbl2, num, diff):
 
     return bm
 
+def checkOutput(outputFile):
+    readFile = open(outputFile, 'r')
+    readFile = readFile.readlines()
+    if readFile[-1].startswith(' Normal termination of'):
+        return 1
+    else:
+        if readFile[-4].startswith(' Error in internal coordinate system'):
+            return 0
+        else:
+            return 2
+
+def parse(tsOutput, reactantOutput, productOutput):
+    import ipdb; ipdb.set_trace()
+    
 def calculate(TS, count):
     quantumMechanics = QMCalculator()
     quantumMechanics.settings.software = 'gaussian'
@@ -225,13 +312,43 @@ def calculate(TS, count):
     pmolFilePathForCalc = qmcalcP.getMolFilePathForCalculation(attempt)
     inputFilePath = rinputFilePath
     outputFilePath = poutputFilePath
+    
+    # Reactant and product file paths
+    rInPath = os.path.join(quantumMechanics.settings.fileStore, 'reactant' + str(count) + inputFileExtension)
+    rOutPath = os.path.join(quantumMechanics.settings.fileStore, 'reactant' + str(count) + outputFileExtension)
+    pInPath = os.path.join(quantumMechanics.settings.fileStore, 'product' + str(count) + inputFileExtension)
+    pOutPath = os.path.join(quantumMechanics.settings.fileStore, 'product' + str(count) + outputFileExtension)
+    
+    # TS file paths
     tsFilePath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + inputFileExtension)
     qstOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + qstOutputFileExtension)
-    tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + tsOutputFileExtension)
-    writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP)
-    run(executablePath, tsFilePath, qstOutPath)
-    writeTSInputFile(tsFilePath)
-    run(executablePath, tsFilePath, tsOutPath)
+    tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + outputFileExtension)
+    
+    # Reactant and product calculations
+    rConverge = 0
+    while rConverge != 1:
+        writeInputFile(rInPath, rmolFilePathForCalc, geometryR, attempt)
+        run(executablePath, rInPath, rOutPath)
+        rConverge = checkOutput(rOutPath)
+        
+    pConverge = 0
+    while pConverge != 1:
+        writeInputFile(pInPath, pmolFilePathForCalc, geometryP, attempt)
+        run(executablePath, pInPath, pOutPath)
+        pConverge = checkOutput(pOutPath)
+    
+    # TS calculations
+    tsConverge = 0
+    while tsConverge == 0:
+        writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP, trial)
+        run(executablePath, tsFilePath, qstOutPath)
+        writeTSInputFile(tsFilePath, trial)
+        run(executablePath, tsFilePath, tsOutPath)
+        tsConverge = checkOutput(tsOutPath)
+    
+    # Parsing
+    if tsConverge == 1:
+        parse(tsOutPath, rOutPath, pOutPath)        
 
 ########################################################################################
 
