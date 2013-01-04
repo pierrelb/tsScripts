@@ -1,5 +1,7 @@
 import os
+
 import logging
+import cclib.parser
 import openbabel
 from subprocess import Popen
 from collections import defaultdict
@@ -175,8 +177,6 @@ def writeInputFile(inputFilePath, molFilePathForCalc, geometry, attempt):
     input_string = obConversion.WriteString(mol)
     top_keys = inputFileKeywords(attempt)
     with open(inputFilePath, 'w') as gaussianFile:
-        gaussianFile.write(chk_file)
-        gaussianFile.write('\n')
         gaussianFile.write(top_keys)
         gaussianFile.write(input_string)
         gaussianFile.write('\n')
@@ -243,8 +243,38 @@ def checkOutput(outputFile):
         else:
             return 2
 
-def parse(tsOutput, reactantOutput, productOutput):
-    import ipdb; ipdb.set_trace()
+# def parse(tsOutput, reactantOutput, productOutput, outputDataFile):
+def parse(tsOutput, reactantOutput, outputDataFile):
+    rParse = cclib.parser.Gaussian(reactantOutput)
+    # pParse = cclib.parser.Gaussian(productOutput)
+    tsParse = cclib.parser.Gaussian(tsOutput)
+    
+    rParse = rParse.parse()
+    # pParse = pParse.parse()
+    tsParse = tsParse.parse()
+    
+    # In Hartrees
+    reactantE = rParse.scfenergies[-1]/27.2113845
+    # productE = pParse.scfenergies[-1]/27.2113845
+    tsE = tsParse.scfenergies[-1]/27.2113845
+    tsVib = tsParse.vibfreqs[0]
+    
+    rString = 'Reactant energy = ' + str(reactantE)
+    # pString = 'Product energy  = ' + str(productE)
+    tEnergy = 'TS energy       = ' + str(tsE)
+    tVib    = 'TS vib          = ' + str(tsVib)
+    
+    with open(outputDataFile, 'w') as parseFile:
+        parseFile.write('The energies of the species in Hartree are:')
+        parseFile.write('\n')
+        parseFile.write(rString)
+        parseFile.write('\n')
+        # parseFile.write(pString)
+        # parseFile.write('\n')
+        parseFile.write(tEnergy)
+        parseFile.write('\n')
+        parseFile.write(tVib)
+        parseFile.write('\n')
     
 def calculate(TS, count):
     quantumMechanics = QMCalculator()
@@ -316,39 +346,58 @@ def calculate(TS, count):
     # Reactant and product file paths
     rInPath = os.path.join(quantumMechanics.settings.fileStore, 'reactant' + str(count) + inputFileExtension)
     rOutPath = os.path.join(quantumMechanics.settings.fileStore, 'reactant' + str(count) + outputFileExtension)
-    pInPath = os.path.join(quantumMechanics.settings.fileStore, 'product' + str(count) + inputFileExtension)
-    pOutPath = os.path.join(quantumMechanics.settings.fileStore, 'product' + str(count) + outputFileExtension)
+    # pInPath = os.path.join(quantumMechanics.settings.fileStore, 'product' + str(count) + inputFileExtension)
+    # pOutPath = os.path.join(quantumMechanics.settings.fileStore, 'product' + str(count) + outputFileExtension)
     
     # TS file paths
     tsFilePath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + inputFileExtension)
     qstOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + qstOutputFileExtension)
     tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + outputFileExtension)
     
+    # Data file
+    outputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'kinetics' + str(count) + outputFileExtension)
+    
     # Reactant and product calculations
+    rAttempt = 1
     rConverge = 0
+    if os.path.exists(rOutPath):
+        rConverge = checkOutput(rOutPath)
     while rConverge != 1:
-        writeInputFile(rInPath, rmolFilePathForCalc, geometryR, attempt)
+        writeInputFile(rInPath, rmolFilePathForCalc, geometryR, rAttempt)
         run(executablePath, rInPath, rOutPath)
         rConverge = checkOutput(rOutPath)
-        
-    pConverge = 0
-    while pConverge != 1:
-        writeInputFile(pInPath, pmolFilePathForCalc, geometryP, attempt)
-        run(executablePath, pInPath, pOutPath)
-        pConverge = checkOutput(pOutPath)
+        rAttempt += 1
+    
+    # pAttempt = 1    
+    # pConverge = 0
+    # if os.path.exists(pOutPath):
+    #     pConverge = checkOutput(pOutPath)
+    # while pConverge != 1:
+    #     writeInputFile(pInPath, pmolFilePathForCalc, geometryP, pAttempt)
+    #     run(executablePath, pInPath, pOutPath)
+    #     pConverge = checkOutput(pOutPath)
+    #     pAttempt += 1
     
     # TS calculations
     tsConverge = 0
+    if os.path.exists(tsOutPath):
+        tsConverge = checkOutput(tsOutPath)
+    trial = 1
     while tsConverge == 0:
         writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP, trial)
         run(executablePath, tsFilePath, qstOutPath)
         writeTSInputFile(tsFilePath, trial)
         run(executablePath, tsFilePath, tsOutPath)
         tsConverge = checkOutput(tsOutPath)
-    
-    # Parsing
+        trial += 1
+            
+    # Parsing, so far just reading energies
     if tsConverge == 1:
-        parse(tsOutPath, rOutPath, pOutPath)        
+        if os.path.exists(outputDataFile):
+            pass
+        else:
+            # parse(tsOutPath, rOutPath, pOutPath, outputDataFile)
+            parse(tsOutPath, rOutPath, outputDataFile)        
 
 ########################################################################################
 
