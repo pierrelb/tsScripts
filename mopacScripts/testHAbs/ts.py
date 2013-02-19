@@ -29,7 +29,7 @@ reactRecipe = ReactionRecipe(actions)
 
 template = KineticsFamily(forwardRecipe=reactRecipe)
 
-trusted = open('/home/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/training.py')
+trusted = open('/Users/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/training.py')
 
 lines = trusted.readlines()
 k = 0
