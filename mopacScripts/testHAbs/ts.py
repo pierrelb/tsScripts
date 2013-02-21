@@ -386,25 +386,22 @@ def writeTSInputFile(inputFilePath, saddleOutput, count):
         mopacFile.write('\n')
         mopacFile.write(bottom_keys)
         mopacFile.write('\n')
-# 
-# def writeTSEval(inputFilePath, tsOutput, count):
-#     obConversion = openbabel.OBConversion()
-#     obConversion.SetInAndOutFormats("mol", "mop")
-#     parseOutput = cclib.parser.Mopac(tsOutput)
-#     parseOutput = parseOutput.parse()
-#     mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
-#     mol.SetTitle('transitionState' + str(count))
-#     obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
-#     input_string = obConversion.WriteString(mol)
-#     
-#     top_keys = 'force'
-#     bottom_keys = 'oldgeo irc=1*'
-#     with open(inputFilePath, 'w') as mopacFile:
-#         mopacFile.write(top_keys)
-#         mopacFile.write(input_string)
-#         mopacFile.write('\n')
-#         mopacFile.write(bottom_keys)
-#         mopacFile.write('\n')
+
+def writeIRC(inputFilePath, tsOutPath, count):
+    obConversion = openbabel.OBConversion()
+    obConversion.SetInAndOutFormats("mol", "mop")
+    parseOutput = cclib.parser.Mopac(tsOutPath)
+    parseOutput = parseOutput.parse()
+    mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
+    mol.SetTitle('transitionState' + str(count))
+    obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
+    input_string = obConversion.WriteString(mol)
+    
+    top_keys = 'irc=1*'
+    with open(inputFilePath, 'w') as mopacFile:
+        mopacFile.write(top_keys)
+        mopacFile.write(input_string)
+        mopacFile.write('\n')
 
 def editMatrix(bm, lbl1, lbl2, num, diff):
     if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
@@ -562,12 +559,14 @@ def calcTS(TS, count):
     saddleInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'saddleCalc' + inputFileExtension)
     tsoptInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'tsopt' + inputFileExtension)
     tsInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'transitionState' + inputFileExtension)
+    ircInput = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'irc' + inputFileExtension)
     
     grefOutPath1 = grefInPath1.split('.')[0] + outputFileExtension
     grefOutPath2 = grefInPath2.split('.')[0] + outputFileExtension
     saddleOutPath = saddleInPath.split('.')[0] + outputFileExtension
     tsoptOutPath = tsoptInPath.split('.')[0] + outputFileExtension
     tsOutPath = tsInPath.split('.')[0] + outputFileExtension
+    ircOutput = ircInput.split('.')[0] + outputFileExtension
     
     if os.path.exists(tsOutPath):
         pass
@@ -628,6 +627,11 @@ def calcTS(TS, count):
     r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
     # p1Converge = optimizeGeom(p1OutPath, p1InPath, p1Qmcalc)
     # p2Converge = optimizeGeom(p2OutPath, p2InPath, p2Qmcalc)
+    
+    # Conduct IRC calculation and validate resulting geometries
+    if tsConverge == 1:
+        writeIRC(ircInput, tsOutPath, count)
+        run(executablePath, ircInput, ircOutput)
     
     # Check outputs
     rTest = tsConverge * r1Converge * r2Converge
