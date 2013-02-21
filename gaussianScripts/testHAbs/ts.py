@@ -516,7 +516,6 @@ def calcTS(TS, count):
     # Reactant and product geometries should be at `stepNum1` and `stepNum1 + stepnum2`
     reactantGeom = ircParse.atomcoords[stepNum1]
     productGeom = ircParse.atomcoords[stepNum1 + stepNum2]
-    import ipdb; ipdb.set_trace()
     ircCheck = testGeometries(reactant, product, reactantGeom, productGeom, ircParse.atomnos)
     
     if ircCheck == 1:
