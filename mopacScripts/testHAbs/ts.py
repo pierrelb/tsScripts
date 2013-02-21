@@ -403,6 +403,75 @@ def writeIRC(inputFilePath, tsOutPath, count):
         mopacFile.write(input_string)
         mopacFile.write('\n')
 
+def getIRCGeom(lines):
+    geom1 = []
+    for line in lines:
+        if not line.startswith('  reversed'):
+            geom1.append(line)
+        else:
+            break
+    geom1.pop()
+    
+    geom2 = []
+    for line in reversed(lines):
+        if not line.startswith(' DRC'):
+            geom2.insert(0, line)
+        else:
+            break
+    
+    return geom1, geom2
+
+def convertMol(geomLines):
+    atomcoords = []
+    atomnos = []
+    for line in geomLines:
+        atType, x, y, z = line.split()
+        if atType == 'H':
+            atNum = 1
+        elif atType == 'C':
+            atNum = 6
+        elif atType == 'O':
+            atNum = 8
+        coords = [float(x),float(y),float(z)]
+        atomnos.append(atNum)
+        atomcoords.append(coords)
+    atomnos = numpy.array(atomnos, dtype=int)
+    atomcoords = numpy.array(atomcoords)
+    mol = cclib.bridge.makeopenbabel(atomcoords, atomnos)
+    
+    rmgMol = Molecule().fromOBMol(mol)
+    
+    return rmgMol
+
+def parseIRC(ircOutput, reactant, product):
+    # You want to read the `.xyz` file.
+    ircXYZ = ircOutput.split('.')[0] + '.xyz'
+    xyzFile = file(ircXYZ)
+    readLines = xyzFile.readlines()
+    
+    # Remove the first 2 lines from the `.xyz`. Makes it easier to get the
+    # geometries we want.
+    readLines.pop(0)
+    readLines.pop(0)
+    
+    geom1, geom2 = getIRCGeom(readLines)
+    
+    ircMol1 = convertMol(geom1)
+    ircMol2 = convertMol(geom2)
+    
+    product.resetConnectivityValues()
+    reactant.resetConnectivityValues()
+    ircMol1.resetConnectivityValues()
+    ircMol2.resetConnectivityValues()
+    
+    # Compare IRC geometries iwth
+    if reactant.isIsomorphic(ircMol1) and product.isIsomorphic(ircMol2):
+        return 1
+    elif reactant.isIsomorphic(ircMol2) and product.isIsomorphic(ircMol1):
+        return 1
+    else:
+        return 0
+
 def editMatrix(bm, lbl1, lbl2, num, diff):
     if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
         bm[lbl2][lbl1] = num
@@ -592,46 +661,59 @@ def calcTS(TS, count):
     # writeTSEval(tsInPath, tsoptOutPath, count)
     # run(executablePath, tsInPath, tsOutPath)
     tsConverge = checkOutput(tsOutPath)
-    # Split the reactants and products in order to calculate their energies
-    # and generate the geometries
-    rct1, rct2 = reactant.split()
-    # prd1, prd2 = product.split()
-    
-    rct1 = fixSortLabel(rct1)
-    rct2 = fixSortLabel(rct2)
-    # prd1 = fixSortLabel(prd1)
-    # prd2 = fixSortLabel(prd2)
-    
-    r1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct1, quantumMechanics.settings)
-    r2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct2, quantumMechanics.settings)
-    # p1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(prd1, quantumMechanics.settings)
-    # p2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(prd2, quantumMechanics.settings)
-    
-    r1Qmcalc.createGeometry()
-    r2Qmcalc.createGeometry()
-    # p1Qmcalc.createGeometry()
-    # p2Qmcalc.createGeometry()
-    
-    # Reactant and product file paths
-    r1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + inputFileExtension)
-    r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
-    r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
-    r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
-    # p1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + inputFileExtension)
-    # p1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + outputFileExtension)
-    # p2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + inputFileExtension)
-    # p2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + outputFileExtension)
-    
-    # Run the optimizations    
-    r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
-    r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
-    # p1Converge = optimizeGeom(p1OutPath, p1InPath, p1Qmcalc)
-    # p2Converge = optimizeGeom(p2OutPath, p2InPath, p2Qmcalc)
     
     # Conduct IRC calculation and validate resulting geometries
     if tsConverge == 1:
         writeIRC(ircInput, tsOutPath, count)
         run(executablePath, ircInput, ircOutput)
+        rightGeom = parseIRC(ircOutput, reactant, product)
+    
+    r1Converge = 0
+    r2Converge = 0
+    if rightGeom == 1:
+        # Split the reactants and products in order to calculate their energies
+        # and generate the geometries
+        rct1, rct2 = reactant.split()
+        # prd1, prd2 = product.split()
+        
+        rct1 = fixSortLabel(rct1)
+        rct2 = fixSortLabel(rct2)
+        # prd1 = fixSortLabel(prd1)
+        # prd2 = fixSortLabel(prd2)
+        
+        r1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct1, quantumMechanics.settings)
+        r2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct2, quantumMechanics.settings)
+        # p1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(prd1, quantumMechanics.settings)
+        # p2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(prd2, quantumMechanics.settings)
+        
+        r1Qmcalc.createGeometry()
+        r2Qmcalc.createGeometry()
+        # p1Qmcalc.createGeometry()
+        # p2Qmcalc.createGeometry()
+        
+        # Reactant and product file paths
+        r1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + inputFileExtension)
+        r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
+        r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
+        r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
+        # p1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + inputFileExtension)
+        # p1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + outputFileExtension)
+        # p2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + inputFileExtension)
+        # p2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + outputFileExtension)
+        
+        # Run the optimizations
+        if len(rct1.atoms)==1:
+            run(executablePath, r1InPath, r1OutPath)
+            r1Converge = 1
+        else:
+            r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
+        if len(rct2.atoms)==1:
+            run(executablePath, r2InPath, r2OutPath)
+            r2Converge = 1
+        else:
+            r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
+        # p1Converge = optimizeGeom(p1OutPath, p1InPath, p1Qmcalc)
+        # p2Converge = optimizeGeom(p2OutPath, p2InPath, p2Qmcalc)
     
     # Check outputs
     rTest = tsConverge * r1Converge * r2Converge
@@ -657,6 +739,5 @@ def calcTS(TS, count):
 
 count = 0
 for TS in tsStructures:
-    if count > 15:
-        calcTS(TS, count)
+    calcTS(TS, count)
     count += 1
