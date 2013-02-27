@@ -5,7 +5,7 @@ import cclib.parser
 import openbabel
 import numpy
 from subprocess import Popen
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 import rmgpy
 from rmgpy.molecule import Molecule
@@ -29,7 +29,7 @@ reactRecipe = ReactionRecipe(actions)
 
 template = KineticsFamily(forwardRecipe=reactRecipe)
 
-trusted = open('/Users/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/training.py')
+trusted = open('/Users/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py')
 
 lines = trusted.readlines()
 k = 0
@@ -52,6 +52,7 @@ for line in lines:
             elif lines[num].find(',') != -1:
                 break
 
+reactantStructures = list()
 tsStructures = list()
 for idx in range(1, len(reactants1) + 1):
     r1 = ''
@@ -63,8 +64,15 @@ for idx in range(1, len(reactants1) + 1):
     r1 = Molecule().fromAdjacencyList(r1)
     r2 = Molecule().fromAdjacencyList(r2)
     rStruct = [r1, r2]
-    pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
-    tsStructures.append(tsStruct)
+    rInChI = [rStruct[0].toInChI(), rStruct[1].toInChI()]
+    doubleChk = 0
+    for pair in reactantStructures:
+        if Counter(pair) == Counter(rInChI):
+            doubleChk = 1
+    if doubleChk == 0:
+        pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
+        reactantStructures.append(rInChI)
+        tsStructures.append(tsStruct)
 
 ########################################################################################    
 inputFileExtension = '.mop'
