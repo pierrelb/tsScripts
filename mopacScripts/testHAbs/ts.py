@@ -502,7 +502,19 @@ def checkOutput(outputFile):
             return checked
         count += 1 
 
-def parse(tsOutput, output1, output2, outputDataFile, reactant, product):
+def getAtomType(atomnum):
+    if atomnum == 1:
+        atType = 'H'
+    elif atomnum == 6:
+        atType = 'C'
+    elif atomnum == 8:
+        atType = 'O'
+    else:
+        atType = 'Could not determine atomtype'
+    
+    return atType
+
+def parse(tsOutput, output1, output2, outputDataFile, reactant, product, labels):
     mol1Parse = cclib.parser.Mopac(output1)
     mol2Parse = cclib.parser.Mopac(output2)
     tsParse   = cclib.parser.Mopac(tsOutput)
@@ -517,13 +529,39 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product):
     tsE = tsParse.scfenergies[-1]
     dE = (tsE - mol1E - mol2E) * 1.60218 * 60221.4
     tsVib = tsParse.vibfreqs[0]
-
+    
+    atom1 = openbabel.OBAtom()
+    atom2 = openbabel.OBAtom()
+    atom3 = openbabel.OBAtom()
+    
+    atom1.SetAtomicNum(int(tsParse.atomnos[labels[0]]))
+    atom2.SetAtomicNum(int(tsParse.atomnos[labels[1]]))
+    atom3.SetAtomicNum(int(tsParse.atomnos[labels[2]]))
+    
+    atom1coords = tsParse.atomcoords[0][labels[0]].tolist()
+    atom2coords = tsParse.atomcoords[0][labels[1]].tolist()
+    atom3coords = tsParse.atomcoords[0][labels[2]].tolist()
+    
+    atom1.SetVector(*atom1coords)
+    atom2.SetVector(*atom2coords)
+    atom3.SetVector(*atom3coords)
+    
+    at1 = getAtomType(atom1.GetAtomicNum())
+    at2 = getAtomType(atom2.GetAtomicNum())
+    at3 = getAtomType(atom3.GetAtomicNum())
+    
     r1String = 'Reactant 1        = ' + reactant.split()[0].toSMILES()
     r2String = 'Reactant 2        = ' + reactant.split()[1].toSMILES()
     p1String = 'Product 1         = ' + product.split()[0].toSMILES()
     p2String = 'Product 2         = ' + product.split()[1].toSMILES()
     tEnergy  = 'Activation Energy = ' + str(dE)
     tVib     = 'TS vib            = ' + str(tsVib)
+    define1  = '*1                = ' + at1
+    define2  = '*2                = ' + at2
+    define3  = '*3                = ' + at3
+    dist12   = '*1 to *2          = ' + str(atom1.GetDistance(atom2))
+    dist23   = '*2 to *3          = ' + str(atom2.GetDistance(atom3))
+    dist13   = '*1 to *3          = ' + str(atom1.GetDistance(atom3))
 
     with open(outputDataFile, 'w') as parseFile:
         parseFile.write('The energies of the species in J/mol are:')
@@ -539,6 +577,18 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product):
         parseFile.write(tEnergy)
         parseFile.write('\n')
         parseFile.write(tVib)
+        parseFile.write('\n')
+        parseFile.write(define1)
+        parseFile.write('\n')
+        parseFile.write(define2)
+        parseFile.write('\n')
+        parseFile.write(define3)
+        parseFile.write('\n')
+        parseFile.write(dist12)
+        parseFile.write('\n')
+        parseFile.write(dist23)
+        parseFile.write('\n')
+        parseFile.write(dist13)
         parseFile.write('\n')
 
 def optimizeGeom(outPath, inputPath, qmCalc):
@@ -578,6 +628,7 @@ def calcTS(TS, count):
         lbl1 = reactant.getLabeledAtom('*1').sortingLabel
         lbl2 = reactant.getLabeledAtom('*2').sortingLabel
         lbl3 = reactant.getLabeledAtom('*3').sortingLabel
+        labels = [lbl1, lbl2, lbl3]
 
         rBM = editMatrix(rBM, lbl1, lbl3, 2.5, 0.1)
         rBM = editMatrix(rBM, lbl2, lbl3, 2.0, 0.1)
@@ -667,7 +718,7 @@ def calcTS(TS, count):
     # writeTSEval(tsInPath, tsoptOutPath, count)
     # run(executablePath, tsInPath, tsOutPath)
     tsConverge = checkOutput(tsOutPath)
-    
+    rightGeom = 0
     # Conduct IRC calculation and validate resulting geometries
     if tsConverge == 1:
         writeIRC(ircInput, tsOutPath, count)
@@ -734,7 +785,7 @@ def calcTS(TS, count):
         if os.path.exists(rOutputDataFile):
             pass
         else:
-            parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, reactant, product)
+            parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, reactant, product, labels)
     # if pTest == 1:
     #     if os.path.exists(pOutputDataFile):
     #         pass
