@@ -243,6 +243,7 @@ def writeReferenceFile(inputFilePath, molFilePathForCalc, geometry, attempt, out
                 atomcoords.append(coords)
         atomnos = numpy.array(atomnos, dtype=int)
         atomcoords = numpy.array(atomcoords)
+        reload(openbabel)
         mol = cclib.bridge.makeopenbabel(atomcoords, atomnos)
     else:
         mol = openbabel.OBMol()
@@ -282,6 +283,7 @@ def writeSaddleInputFile(inputFilePath, reactantRefPath, productRefPath, geometr
             atomcoords.append(coords)
     atomnos = numpy.array(atomnos, dtype=int)
     atomcoords = numpy.array(atomcoords)
+    reload(openbabel)
     molR = cclib.bridge.makeopenbabel(atomcoords, atomnos)
     
     # product
@@ -306,6 +308,7 @@ def writeSaddleInputFile(inputFilePath, reactantRefPath, productRefPath, geometr
             atomcoords.append(coords)
     atomnos = numpy.array(atomnos, dtype=int)
     atomcoords = numpy.array(atomcoords)
+    reload(openbabel)
     molP = cclib.bridge.makeopenbabel(atomcoords, atomnos)
     # 
     # refR = reactantRefPath.split('.')[0] + '.new'
@@ -373,6 +376,7 @@ def writeTSInputFile(inputFilePath, saddleOutput, count):
     obConversion.SetInAndOutFormats("mol", "mop")
     parseOutput = cclib.parser.Mopac(saddleOutput)
     parseOutput = parseOutput.parse()
+    reload(openbabel)
     mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
     mol.SetTitle('transitionState' + str(count))
     obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
@@ -392,6 +396,7 @@ def writeIRC(inputFilePath, tsOutPath, count):
     obConversion.SetInAndOutFormats("mol", "mop")
     parseOutput = cclib.parser.Mopac(tsOutPath)
     parseOutput = parseOutput.parse()
+    reload(openbabel)
     mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
     mol.SetTitle('transitionState' + str(count))
     obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
@@ -437,6 +442,7 @@ def convertMol(geomLines):
         atomcoords.append(coords)
     atomnos = numpy.array(atomnos, dtype=int)
     atomcoords = numpy.array(atomcoords)
+    reload(openbabel)
     mol = cclib.bridge.makeopenbabel(atomcoords, atomnos)
     
     rmgMol = Molecule().fromOBMol(mol)
