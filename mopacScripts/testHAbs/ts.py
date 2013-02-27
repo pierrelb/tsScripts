@@ -495,8 +495,8 @@ def checkOutput(outputFile):
     for line in reversed(readFile.readlines()):
         if line.startswith('          DESCRIPTION OF VIBRATIONS'):
             checked = 1
-        # elif line.startswith(' Error in internal coordinate system'):
-        #     checked = 2
+        elif line.startswith(' ** GRADIENT IS TOO LARGE TO ALLOW FORCE'):
+            checked = 2
         # Don't want to read through the whole things, as success & failure keys are at the bottom
         if checked:
             return checked
@@ -511,7 +511,7 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product):
     parsed2 = mol2Parse.parse()
     tsParse = tsParse.parse()
 
-    # In kJ/mol
+    # In J/mol
     mol1E = parsed1.scfenergies[-1]
     mol2E = parsed2.scfenergies[-1]
     tsE = tsParse.scfenergies[-1]
@@ -526,7 +526,7 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product):
     tVib     = 'TS vib            = ' + str(tsVib)
 
     with open(outputDataFile, 'w') as parseFile:
-        parseFile.write('The energies of the species in kJ/mol are:')
+        parseFile.write('The energies of the species in J/mol are:')
         parseFile.write('\n')
         parseFile.write(r1String)
         parseFile.write('\n')
