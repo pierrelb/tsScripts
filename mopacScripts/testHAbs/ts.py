@@ -616,7 +616,14 @@ def calcTS(TS, count):
     quantumMechanics.settings.scratchDirectory = 'scratch'
     quantumMechanics.settings.onlyCyclics = False
     quantumMechanics.settings.maxRadicalNumber = 0
-
+    
+    if count < 10:
+        fileNum = '00' + str(count)
+    elif count < 100:
+        fileNum = '0' + str(count)
+    else:
+        fileNum = str(count)
+    
     reactant = fixSortLabel(TS[0])
     product = fixSortLabel(TS[1])
 
@@ -678,14 +685,14 @@ def calcTS(TS, count):
     outputFilePath = poutputFilePath
 
     # TS file paths
-    rRefInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rRef' + inputFileExtension)
-    grefInPath1 = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'pGeo' + inputFileExtension)
-    pRefInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'pRef' + inputFileExtension)
-    grefInPath2 = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rGeo' + inputFileExtension)
-    saddleInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'saddleCalc' + inputFileExtension)
-    tsoptInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'tsopt' + inputFileExtension)
-    tsInPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'transitionState' + inputFileExtension)
-    ircInput = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'irc' + inputFileExtension)
+    rRefInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rRef' + inputFileExtension)
+    grefInPath1 = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'pGeo' + inputFileExtension)
+    pRefInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'pRef' + inputFileExtension)
+    grefInPath2 = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rGeo' + inputFileExtension)
+    saddleInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'saddleCalc' + inputFileExtension)
+    tsoptInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'tsopt' + inputFileExtension)
+    tsInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'transitionState' + inputFileExtension)
+    ircInput = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'irc' + inputFileExtension)
     
     grefOutPath1 = grefInPath1.split('.')[0] + outputFileExtension
     grefOutPath2 = grefInPath2.split('.')[0] + outputFileExtension
@@ -715,8 +722,6 @@ def calcTS(TS, count):
         writeTSInputFile(tsInPath, saddleOutPath, count)
         run(executablePath, tsInPath, tsOutPath)
     
-    # writeTSEval(tsInPath, tsoptOutPath, count)
-    # run(executablePath, tsInPath, tsOutPath)
     tsConverge = checkOutput(tsOutPath)
     rightGeom = 0
     # Conduct IRC calculation and validate resulting geometries
@@ -731,32 +736,21 @@ def calcTS(TS, count):
         # Split the reactants and products in order to calculate their energies
         # and generate the geometries
         rct1, rct2 = reactant.split()
-        # prd1, prd2 = product.split()
         
         rct1 = fixSortLabel(rct1)
         rct2 = fixSortLabel(rct2)
-        # prd1 = fixSortLabel(prd1)
-        # prd2 = fixSortLabel(prd2)
         
         r1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct1, quantumMechanics.settings)
         r2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct2, quantumMechanics.settings)
-        # p1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(prd1, quantumMechanics.settings)
-        # p2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(prd2, quantumMechanics.settings)
         
         r1Qmcalc.createGeometry()
         r2Qmcalc.createGeometry()
-        # p1Qmcalc.createGeometry()
-        # p2Qmcalc.createGeometry()
         
         # Reactant and product file paths
-        r1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + inputFileExtension)
-        r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
-        r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
-        r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
-        # p1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + inputFileExtension)
-        # p1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + outputFileExtension)
-        # p2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + inputFileExtension)
-        # p2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + outputFileExtension)
+        r1InPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct1' + inputFileExtension)
+        r1OutPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct1' + outputFileExtension)
+        r2InPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct2' + inputFileExtension)
+        r2OutPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct2' + outputFileExtension)
         
         # Run the optimizations
         if len(rct1.atoms)==1:
@@ -769,16 +763,12 @@ def calcTS(TS, count):
             r2Converge = 1
         else:
             r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
-        # p1Converge = optimizeGeom(p1OutPath, p1InPath, p1Qmcalc)
-        # p2Converge = optimizeGeom(p2OutPath, p2InPath, p2Qmcalc)
-    
+        
     # Check outputs
     rTest = tsConverge * r1Converge * r2Converge
-    # pTest = tsConverge * p1Converge * p2Converge
     
     # Data file
-    rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'activationER' + str(count) + outputFileExtension)
-    # pOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'activationEP' + str(count) + outputFileExtension)
+    rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'activationER' + fileNum + outputFileExtension)
     
     # Parsing, so far just reading energies
     if rTest == 1:
@@ -786,14 +776,8 @@ def calcTS(TS, count):
             pass
         else:
             parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, reactant, product, labels)
-    # if pTest == 1:
-    #     if os.path.exists(pOutputDataFile):
-    #         pass
-    #     else:
-    #         parse(tsOutPath, p1OutPath, p2OutPath, pOutputDataFile, reactant, product)       
 
 ########################################################################################
-
 count = 0
 for TS in tsStructures:
     calcTS(TS, count)
