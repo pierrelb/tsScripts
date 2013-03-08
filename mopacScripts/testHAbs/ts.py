@@ -52,7 +52,7 @@ for line in lines:
             elif lines[num].find(',') != -1:
                 break
 
-reactantStructures = list()
+prevReactions = list()
 tsStructures = list()
 for idx in range(1, len(reactants1) + 1):
     r1 = ''
@@ -64,14 +64,14 @@ for idx in range(1, len(reactants1) + 1):
     r1 = Molecule().fromAdjacencyList(r1)
     r2 = Molecule().fromAdjacencyList(r2)
     rStruct = [r1, r2]
-    rInChI = [rStruct[0].toInChI(), rStruct[1].toInChI()]
+    pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
+    rxnInChI = [rStruct[0].toInChI(), rStruct[1].toInChI(), pStruct[0].toInChI(), pStruct[1].toInChI()]
     doubleChk = 0
-    for pair in reactantStructures:
-        if Counter(pair) == Counter(rInChI):
+    for pair in prevReactions:
+        if Counter(pair) == Counter(rxnInChI):
             doubleChk = 1
     if doubleChk == 0:
-        pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
-        reactantStructures.append(rInChI)
+        prevReactions.append(rxnInChI)
         tsStructures.append(tsStruct)
 
 ########################################################################################    
@@ -183,15 +183,10 @@ def writeInputFile(inputFilePath, molFilePathForCalc, geometry):
     input_string = obConversion.WriteString(mol)
     bottom_keys = 'oldgeo force'
     with open(inputFilePath, 'w') as mopacFile:
-        # mopacFile.write(top_keys)
         mopacFile.write(input_string)
         mopacFile.write('\n')
         mopacFile.write(bottom_keys)
         mopacFile.write('\n')
-        # mopacFile.write(bottom_keys)
-        # if usePolar:
-        #     mopacFile.write('\n\n\n')
-        #     mopacFile.write(polar_keys)
 
 def inputFileKeywords(attempt):
     """
@@ -318,16 +313,6 @@ def writeSaddleInputFile(inputFilePath, reactantRefPath, productRefPath, geometr
     atomcoords = numpy.array(atomcoords)
     reload(openbabel)
     molP = cclib.bridge.makeopenbabel(atomcoords, atomnos)
-    # 
-    # refR = reactantRefPath.split('.')[0] + '.new'
-    # rInput = open(refR, 'r')
-    # rInput.readline()
-    # rString = rInput.read()
-    # 
-    # refP = productRefPath.split('.')[0] + '.new'
-    # pInput = open(refP, 'r')
-    # pInput.readline()
-    # pString = pInput.read()
     
     obrConversion = openbabel.OBConversion()
     obrConversion.SetInAndOutFormats("mol", "mop")
@@ -522,7 +507,7 @@ def getAtomType(atomnum):
     
     return atType
 
-def parse(tsOutput, output1, output2, outputDataFile, reactant, product, labels):
+def parse(tsOutput, output1, output2, outputDataFile, labels):
     mol1Parse = cclib.parser.Mopac(output1)
     mol2Parse = cclib.parser.Mopac(output2)
     tsParse   = cclib.parser.Mopac(tsOutput)
@@ -535,8 +520,8 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product, labels)
     mol1E = parsed1.scfenergies[-1]
     mol2E = parsed2.scfenergies[-1]
     tsE = tsParse.scfenergies[-1]
-    dE = (tsE - mol1E - mol2E) * 1.60218 * 60221.4
-    tsVib = tsParse.vibfreqs[0]
+    deltaE = (tsE - mol1E - mol2E) * 1.60218 * 60221.4
+    vibFreq = tsParse.vibfreqs[0]
     
     atom1 = openbabel.OBAtom()
     atom2 = openbabel.OBAtom()
@@ -558,19 +543,26 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product, labels)
     at2 = getAtomType(atom2.GetAtomicNum())
     at3 = getAtomType(atom3.GetAtomicNum())
     
+    activeAts = [at1, at2, at3]
+    atomDist = [str(atom1.GetDistance(atom2)), str(atom2.GetDistance(atom3)), str(atom1.GetDistance(atom3))]
+    
+    return deltaE, vibFreq, activeAts, atomDist
+    
+def writeRxnOutputFile(outputDataFile,reactant, product, deltaE, vibFreq, activeAts, atomDist, notes):
     r1String = 'Reactant 1        = ' + reactant.split()[0].toSMILES()
     r2String = 'Reactant 2        = ' + reactant.split()[1].toSMILES()
     p1String = 'Product 1         = ' + product.split()[0].toSMILES()
     p2String = 'Product 2         = ' + product.split()[1].toSMILES()
-    tEnergy  = 'Activation Energy = ' + str(dE)
-    tVib     = 'TS vib            = ' + str(tsVib)
-    define1  = '*1                = ' + at1
-    define2  = '*2                = ' + at2
-    define3  = '*3                = ' + at3
-    dist12   = '*1 to *2          = ' + str(atom1.GetDistance(atom2))
-    dist23   = '*2 to *3          = ' + str(atom2.GetDistance(atom3))
-    dist13   = '*1 to *3          = ' + str(atom1.GetDistance(atom3))
-
+    tEnergy  = 'Activation Energy = ' + str(deltaE)
+    tVib     = 'TS vib            = ' + str(vibFreq)
+    define1  = '*1                = ' + activeAts[0]
+    define2  = '*2                = ' + activeAts[1]
+    define3  = '*3                = ' + activeAts[2]
+    dist12   = '*1 to *2          = ' + atomDist[0]
+    dist23   = '*2 to *3          = ' + atomDist[1]
+    dist13   = '*1 to *3          = ' + atomDist[2]
+    notes    = 'Notes             = ' + notes
+    
     with open(outputDataFile, 'w') as parseFile:
         parseFile.write('The energies of the species in J/mol are:')
         parseFile.write('\n')
@@ -597,6 +589,8 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product, labels)
         parseFile.write(dist23)
         parseFile.write('\n')
         parseFile.write(dist13)
+        parseFile.write('\n')
+        parseFile.write(notes)
         parseFile.write('\n')
 
 def optimizeGeom(outPath, inputPath, qmCalc):
@@ -631,6 +625,9 @@ def calcTS(TS, count):
         fileNum = '0' + str(count)
     else:
         fileNum = str(count)
+    
+    # Keep track of any failures
+    notes = ''
     
     reactant = fixSortLabel(TS[0])
     product = fixSortLabel(TS[1])
@@ -691,7 +688,7 @@ def calcTS(TS, count):
     pmolFilePathForCalc = qmcalcP.getMolFilePathForCalculation(attempt)
     inputFilePath = rinputFilePath
     outputFilePath = poutputFilePath
-
+    
     # TS file paths
     rRefInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rRef' + inputFileExtension)
     grefInPath1 = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'pGeo' + inputFileExtension)
@@ -737,6 +734,8 @@ def calcTS(TS, count):
         writeIRC(ircInput, tsOutPath, count)
         run(executablePath, ircInput, ircOutput)
         rightGeom = parseIRC(ircOutput, reactant, product)
+    else:
+        notes = notes + 'Transition state not converged: '
     
     r1Converge = 0
     r2Converge = 0
@@ -766,24 +765,37 @@ def calcTS(TS, count):
             r1Converge = 1
         else:
             r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
+            if r1Converge != 1:
+                notes = notes + 'Failure at reactant 1: '
         if len(rct2.atoms)==1:
             run(executablePath, r2InPath, r2OutPath)
             r2Converge = 1
         else:
             r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
+            if r2Converge != 1:
+                notes = notes + 'Failure at reactant 2: '
+    else:
+        notes = notes + 'Failure at IRC: '
         
     # Check outputs
     rTest = tsConverge * r1Converge * r2Converge
     
     # Data file
-    rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'activationER' + fileNum + outputFileExtension)
+    rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'data' + fileNum + outputFileExtension)
     
     # Parsing, so far just reading energies
     if rTest == 1:
         if os.path.exists(rOutputDataFile):
             pass
         else:
-            parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, reactant, product, labels)
+            deltaE, vibFreq, activeAts, atomDist = parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, labels)
+    else:
+        deltaE = 'Failed run'
+        vibFreq = 'Failed run'
+        activeAts = ['Failed run', 'Failed run', 'Failed run']
+        atomDist = ['Failed run', 'Failed run', 'Failed run']
+    
+    writeRxnOutputFile(rOutputDataFile, reactant, product, deltaE, vibFreq, activeAts, atomDist, notes)
 
 ########################################################################################
 count = 0
