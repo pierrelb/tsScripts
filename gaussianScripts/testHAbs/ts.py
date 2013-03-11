@@ -260,77 +260,49 @@ def fromXYZ(molGeom, atomnos):
     
     return rmgMol
 
-def testGeometries(react, prdct, reactGeom, prdctGeom, atomnos):
+def testGeometries(react, prdct, ircOutPath, notes):
     """
     Compares IRC geometries to input geometries.
     """
+    # Search IRC output for total number of steps
+    stepNum1, stepNum2 = checkIRC(ircOutPath)
+    
+    # Compare the reactants and products
+    ircParse = cclib.parser.Gaussian(ircOutPath)
+    ircParse = ircParse.parse()
+    
+    atomnos = ircParse.atomnos
+    atomcoords = ircParse.atomcoords
+    # import ipdb; ipdb.set_trace()
+    
     # Convert the IRC geometries into RMG molecules
-    rMol = fromXYZ(reactGeom, atomnos)
-    pMol = fromXYZ(reactGeom, atomnos)
+    rMol = fromXYZ(atomcoords[0], atomnos)
+    pMol = fromXYZ(atomcoords[-1], atomnos)
     
-    # Splits the original molecules and the IRC molecules
-    react = react.split()
-    prdct = prdct.split()
-    rMol = rMol.split() 
-    pMol = pMol.split()
-    
-    # Compare the original molecules to the IRC molecules
-    # Must compare both ends as not certain if IRC forward path
-    # is always products
-    rtrt = set(react) & set(rMol)
-    pdpd = set(prdct) & set(pMol)
-    rtpd = set(react) & set(pMol)
-    pdrt = set(prdct) & set(rMol)
-    
-    # A lot of this below can be made into a function that's called repeatedly
-    if rtrt == set(react):
-        if pdpd == set(prdct):
-            return 1
-        elif len(pMol) == 2 and len(prdct) == 2:
-            if pMol[0] == pMol[1] and prdct[0] == prdct[1] and pMol[0] == prdct[0]:
-                return 1
-            else:
-                return 0
+    if rMol.toInChI() == react.toInChI():
+        if pMol.toInChI() == prdct.toInChI():
+            notes = ''
+            return 1, notes
         else:
-            return 0
-    elif len(rMol) == 2 and len(react) == 2:
-        if rMol[0] == rMol[1] and react[0] == react[1] and rMol[0] == react[0]:
-            if pdpd == set(prdct):
-                return 1
-            elif len(pMol) == 2 and len(prdct) == 2:
-                if pMol[0] == pMol[1] and prdct[0] == prdct[1] and pMol[0] == prdct[0]:
-                    return 1
-                else:
-                    return 0
-            else:
-                return 0
+            notes = ' products do not match '
+            return 0, notes
+    elif rMol.toInChI() == prdct.toInChI():
+        if pMol.toInChI() == react.toInChI():
+            notes = ''
+            return 1, notes
         else:
-            return 0
-    elif rtpd == set(react):
-        if pdrt == set(prdct):
-            return 1
-        elif len(rMol) == 2 and len(prdct) == 2:
-            if rMol[0] == rMol[1] and prdct[0] == prdct[1] and rMol[0] == prdct[0]:
-                return 1
-            else:
-                return 0
-        else:
-            return 0
-    elif len(pMol) == 2 and len(react) == 2:
-        if pMol[0] == pMol[1] and react[0] == react[1] and pMol[0] == react[0]:
-            if pdrt == set(prdct):
-                return 1
-            elif len(rMol) == 2 and len(prdct) == 2:
-                if rMol[0] == rMol[1] and prdct[0] == prdct[1] and rMol[0] == prdct[0]:
-                    return 1
-                else:
-                    return 0
-            else:
-                return 0
-        else:
-            return 0
+            notes = ' reactants do not match '
+            return 0, notes
     else:
-        return 0
+        if pMol.toInChI() == prdct.toInChI():
+            notes = 'reactants do not match '
+            return 0, notes
+        elif pMol.toInChI() == react.toInChI():
+            notes = ' products do not match '
+            return 0, notes
+        else:
+            notes = ' reactants and products do not match '
+            return 0, notes
 
 def editMatrix(bm, lbl1, lbl2, num, diff):
     if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
@@ -506,31 +478,17 @@ def calcTS(TS, count):
     writeIRCInput(ircInPath)
     run(executablePath, ircInPath, ircOutPath)
     
-    # Search IRC output for total number of steps
-    stepNum1, stepNum2 = checkIRC(ircOutPath)
+    notes = ''
     
-    # Compare the reactants and products
-    ircParse = cclib.parser.Gaussian(ircOutPath)
-    ircParse = ircParse.parse()
-    
-    # Reactant and product geometries should be at `stepNum1` and `stepNum1 + stepnum2`
-    reactantGeom = ircParse.atomcoords[stepNum1]
-    productGeom = ircParse.atomcoords[stepNum1 + stepNum2]
-    ircCheck = testGeometries(reactant, product, reactantGeom, productGeom, ircParse.atomnos)
-    
-    if ircCheck == 1:
-        import ipdb; ipdb.set_trace()
+    ircCheck, notes = testGeometries(reactant, product, ircOutPath, notes)
     
     while ircCheck == 1:
         # Split the reactants and products in order to calculate their energies
         # and generate the geometries
         rct1, rct2 = reactant.split()
-        prd1, prd2 = product.split()
         
         rct1 = fixSortLabel(rct1)
         rct2 = fixSortLabel(rct2)
-        prd1 = fixSortLabel(prd1)
-        prd2 = fixSortLabel(prd2)
         
         r1Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct1, quantumMechanics.settings)
         r2Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct2, quantumMechanics.settings)
@@ -547,24 +505,16 @@ def calcTS(TS, count):
         r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
         r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
         r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
-        p1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + inputFileExtension)
-        p1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd1' + outputFileExtension)
-        p2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + inputFileExtension)
-        p2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'prd2' + outputFileExtension)
         
         # Run the optimizations    
         r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
         r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
-        p1Converge = optimizeGeom(p1OutPath, p1InPath, p1Qmcalc)
-        p2Converge = optimizeGeom(p2OutPath, p2InPath, p2Qmcalc)
         
         # Check outputs
         rTest = tsConverge * r1Converge * r2Converge
-        pTest = tsConverge * p1Converge * p2Converge
         
         # Data file
         rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'activationER' + str(count) + outputFileExtension)
-        pOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'activationEP' + str(count) + outputFileExtension)
         
         # Parsing, so far just reading energies
         if rTest == 1:
