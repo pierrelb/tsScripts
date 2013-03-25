@@ -4,13 +4,12 @@ import logging
 import cclib.parser
 import openbabel
 from subprocess import Popen
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 import rmgpy
 from rmgpy.molecule import Molecule
 from rmgpy.qm.main import QMCalculator
-from rmgpy.qm.molecule import Geometry
-# from rmgpy.qm.reaction import QMReaction
+from rmgpy.qm.molecule import Geometry, RDKitFailedError
 from rmgpy.data.kinetics import KineticsFamily, ReactionRecipe
 
 import rdkit
@@ -28,7 +27,7 @@ family = 'H_Abstraction'
 reactRecipe = ReactionRecipe(actions)
 
 template = KineticsFamily(forwardRecipe=reactRecipe)
-trusted = open('/home/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/training.py')
+trusted = open('/home/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py')
 
 lines = trusted.readlines()
 k = 0
@@ -51,6 +50,7 @@ for line in lines:
             elif lines[num].find(',') != -1:
                 break
 
+prevReactions = list()
 tsStructures = list()
 for idx in range(1, len(reactants1) + 1):
     r1 = ''
@@ -63,7 +63,14 @@ for idx in range(1, len(reactants1) + 1):
     r2 = Molecule().fromAdjacencyList(r2)
     rStruct = [r1, r2]
     pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
-    tsStructures.append(tsStruct)
+    rxnInChI = [rStruct[0].toInChI(), rStruct[1].toInChI(), pStruct[0].toInChI(), pStruct[1].toInChI()]
+    doubleChk = 0
+    for pair in prevReactions:
+        if Counter(pair) == Counter(rxnInChI):
+            doubleChk = 1
+    if doubleChk == 0:
+        prevReactions.append(rxnInChI)
+        tsStructures.append(tsStruct)
 
 ########################################################################################    
 inputFileExtension = '.gjf'
@@ -264,45 +271,67 @@ def testGeometries(react, prdct, ircOutPath, notes):
     """
     Compares IRC geometries to input geometries.
     """
-    # Search IRC output for total number of steps
-    stepNum1, stepNum2 = checkIRC(ircOutPath)
+    # Search IRC output for steps on each side of the path
+    readFile = file(ircOutPath)
+    pth1 = list()
+    steps = list()
+    for line in readFile.readlines():
+        if line.startswith(' Point Number:'):
+            if int(line.split()[2]) > 0:
+                if int(line.split()[-1]) == 1:
+                    ptNum = int(line.split()[2])
+                    pth1.append(ptNum)
+                else:
+                    pass
+        elif line.startswith('  # OF STEPS ='):
+            numStp = int(line.split()[-1])
+            steps.append(numStp)
     
-    # Compare the reactants and products
-    ircParse = cclib.parser.Gaussian(ircOutPath)
-    ircParse = ircParse.parse()
-    
-    atomnos = ircParse.atomnos
-    atomcoords = ircParse.atomcoords
-    # import ipdb; ipdb.set_trace()
-    
-    # Convert the IRC geometries into RMG molecules
-    rMol = fromXYZ(atomcoords[0], atomnos)
-    pMol = fromXYZ(atomcoords[-1], atomnos)
-    
-    if rMol.toInChI() == react.toInChI():
-        if pMol.toInChI() == prdct.toInChI():
-            notes = ''
-            return 1, notes
-        else:
-            notes = ' products do not match '
-            return 0, notes
-    elif rMol.toInChI() == prdct.toInChI():
-        if pMol.toInChI() == react.toInChI():
-            notes = ''
-            return 1, notes
-        else:
-            notes = ' reactants do not match '
-            return 0, notes
+    # This indexes the coordinate to be used from the parsing
+    if steps == []:
+        notes = ' IRC failed '
+        return 0, notes
     else:
-        if pMol.toInChI() == prdct.toInChI():
-            notes = 'reactants do not match '
-            return 0, notes
-        elif pMol.toInChI() == react.toInChI():
-            notes = ' products do not match '
-            return 0, notes
+        pth1End = sum(steps[:pth1[-1]])		
+        # Compare the reactants and products
+        ircParse = cclib.parser.Gaussian(ircOutPath)
+        ircParse = ircParse.parse()
+        
+        atomnos = ircParse.atomnos
+        atomcoords = ircParse.atomcoords
+        # import ipdb; ipdb.set_trace()
+        
+        # Convert the IRC geometries into RMG molecules
+        # We don't know which is reactant or product, so take the two at the end of the
+        # paths and compare to the reactants and products
+        
+        mol1 = fromXYZ(atomcoords[pth1End], atomnos)
+        mol2 = fromXYZ(atomcoords[-1], atomnos)
+        
+        if mol1.toInChI() == react.toInChI():
+            if mol2.toInChI() == prdct.toInChI():
+                notes = ''
+                return 1, notes
+            else:
+                notes = ' products do not match '
+                return 0, notes
+        elif mol1.toInChI() == prdct.toInChI():
+            if mol2.toInChI() == react.toInChI():
+                notes = ''
+                return 1, notes
+            else:
+                notes = ' reactants do not match '
+                return 0, notes
         else:
-            notes = ' reactants and products do not match '
-            return 0, notes
+            if mol2.toInChI() == prdct.toInChI():
+                notes = 'reactants do not match '
+                return 0, notes
+            elif mol2.toInChI() == react.toInChI():
+                notes = ' products do not match '
+                return 0, notes
+            else:
+                notes = ' both reactants and products do not match '
+                return 0, notes
 
 def editMatrix(bm, lbl1, lbl2, num, diff):
     if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
@@ -325,28 +354,29 @@ def checkOutput(outputFile):
         else:
             return 2
 
-def parse(tsOutput, output1, output2, outputDataFile, reactant, product):
-    mol1Parse = cclib.parser.Gaussian(output1)
-    mol2Parse = cclib.parser.Gaussian(output2)
+def parse(tsOutput, outputDataFile, reactant, product, notes):
+    # mol1Parse = cclib.parser.Gaussian(output1)
+    # mol2Parse = cclib.parser.Gaussian(output2)
     tsParse = cclib.parser.Gaussian(tsOutput)
 
-    parsed1 = mol1Parse.parse()
-    parsed2 = mol2Parse.parse()
+    # parsed1 = mol1Parse.parse()
+    # parsed2 = mol2Parse.parse()
     tsParse = tsParse.parse()
     
     # In kJ/mol
-    mol1E = parsed1.scfenergies[-1]
-    mol2E = parsed2.scfenergies[-1]
+    # mol1E = parsed1.scfenergies[-1]
+    # mol2E = parsed2.scfenergies[-1]
     tsE = tsParse.scfenergies[-1]
-    dE = (tsE - mol1E - mol2E) * 96.4853365
+    # dE = (tsE - mol1E - mol2E) * 96.4853365
     tsVib = tsParse.vibfreqs[0]
 
     r1String = 'Reactant 1        = ' + reactant.split()[0].toSMILES()
     r2String = 'Reactant 2        = ' + reactant.split()[1].toSMILES()
     p1String = 'Product 1         = ' + product.split()[0].toSMILES()
     p2String = 'Product 2         = ' + product.split()[1].toSMILES()
-    tEnergy  = 'Activation Energy = ' + str(dE)
+    # tEnergy  = 'Activation Energy = ' + str(dE)
     tVib     = 'TS vib            = ' + str(tsVib)
+    notes    = 'Notes             = ' + notes
 
     with open(outputDataFile, 'w') as parseFile:
         parseFile.write('The energies of the species in kJ/mol are:')
@@ -359,9 +389,11 @@ def parse(tsOutput, output1, output2, outputDataFile, reactant, product):
         parseFile.write('\n')
         parseFile.write(p2String)
         parseFile.write('\n')
-        parseFile.write(tEnergy)
-        parseFile.write('\n')
+        # parseFile.write(tEnergy)
+        # parseFile.write('\n')
         parseFile.write(tVib)
+        parseFile.write('\n')
+        parseFile.write(notes)
         parseFile.write('\n')
 
 def optimizeGeom(outPath, inputPath, qmCalc):
@@ -477,56 +509,73 @@ def calcTS(TS, count):
     # Do the IRC calculation
     writeIRCInput(ircInPath)
     run(executablePath, ircInPath, ircOutPath)
+
+def parseTS(TS, count):
+    
+    quantumMechanics = QMCalculator()
+    quantumMechanics.settings.software = 'gaussian'
+    quantumMechanics.settings.fileStore = 'QMfiles'
+    quantumMechanics.settings.scratchDirectory = 'scratch'
+    quantumMechanics.settings.onlyCyclics = False
+    quantumMechanics.settings.maxRadicalNumber = 0
+    
+    reactant = fixSortLabel(TS[0])
+    product = fixSortLabel(TS[1])
+    
+    tsName = 'transitionState' + str(count)
+    tsOutPath = os.path.join(quantumMechanics.settings.fileStore, tsName + outputFileExtension)
+    
+    # TS file paths
+    ircOutPath = os.path.join(quantumMechanics.settings.fileStore, tsName + 'IRC' + outputFileExtension)
     
     notes = ''
     
     ircCheck, notes = testGeometries(reactant, product, ircOutPath, notes)
     
-    while ircCheck == 1:
+    if ircCheck == 1:
         # Split the reactants and products in order to calculate their energies
         # and generate the geometries
         rct1, rct2 = reactant.split()
         
-        rct1 = fixSortLabel(rct1)
-        rct2 = fixSortLabel(rct2)
+        # rct1 = fixSortLabel(rct1)
+        # rct2 = fixSortLabel(rct2)
+        # 
+        # r1Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct1, quantumMechanics.settings)
+        # r2Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct2, quantumMechanics.settings)
+        # 
+        # r1Qmcalc.createGeometry()
+        # r2Qmcalc.createGeometry()
+        # 
+        # # Reactant and product file paths
+        # r1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + inputFileExtension)
+        # r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
+        # r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
+        # r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
+        # 
+        # # Run the optimizations
+        # r1Converge = 0 
+        # r2Converge = 0
+        # r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
+        # r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
         
-        r1Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct1, quantumMechanics.settings)
-        r2Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct2, quantumMechanics.settings)
-        p1Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(prd1, quantumMechanics.settings)
-        p2Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(prd2, quantumMechanics.settings)
+        # # TS calculations
+        # tsConverge = 0
+        # if os.path.exists(tsOutPath):
+        #     tsConverge = checkOutput(tsOutPath)
         
-        r1Qmcalc.createGeometry()
-        r2Qmcalc.createGeometry()
-        p1Qmcalc.createGeometry()
-        p2Qmcalc.createGeometry()
-        
-        # Reactant and product file paths
-        r1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + inputFileExtension)
-        r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
-        r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
-        r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
-        
-        # Run the optimizations    
-        r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
-        r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
-        
-        # Check outputs
-        rTest = tsConverge * r1Converge * r2Converge
-        
+        # # Check outputs
+        # rTest = tsConverge * r1Converge * r2Converge
+        # 
         # Data file
-        rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'activationER' + str(count) + outputFileExtension)
+        rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'data' + str(count) + outputFileExtension)
         
-        # Parsing, so far just reading energies
-        if rTest == 1:
-            if os.path.exists(rOutputDataFile):
-                pass
-            else:
-                parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, reactant, product)
-        if pTest == 1:
-            if os.path.exists(pOutputDataFile):
-                pass
-            else:
-                parse(tsOutPath, p1OutPath, p2OutPath, pOutputDataFile, reactant, product)       
+        # # Parsing, so far just reading energies
+        # if tsConverge == 1:
+        #     if os.path.exists(rOutputDataFile):
+        #         pass
+        #     else:
+        #         parse(tsOutPath, rOutputDataFile, reactant, product, notes)
+        parse(tsOutPath, rOutputDataFile, reactant, product, notes)
 
 def applyTST():
     """
@@ -548,7 +597,11 @@ def applyTST():
 
 ########################################################################################
 
-count = 0
-for TS in tsStructures:
-    calcTS(TS, count)
-    count += 1
+
+for count,TS in enumerate(tsStructures):
+    if count > 330:
+        parseTS(TS, count)
+    # try:
+    #     calcTS(TS, count)
+    # except RDKitFailedError:
+    #     print "Reaction {0} failed in RDkit: {1!r}".format(count, TS)
