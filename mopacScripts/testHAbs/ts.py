@@ -15,6 +15,8 @@ from rmgpy.data.kinetics import KineticsFamily, ReactionRecipe
 
 import rdkit
 
+
+import ipdb; ipdb.set_trace()
 # script to prep ts structures
 actions = [
             ['BREAK_BOND', '*1', 'S', '*2'],
@@ -490,6 +492,8 @@ def checkOutput(outputFile):
             checked = 1
         elif line.startswith(' ** GRADIENT IS TOO LARGE TO ALLOW FORCE'):
             checked = 2
+        elif line.startswith(' FOR SOME REASON THE SCF CALCULATION FAILED'):
+            checked = 2
         # Don't want to read through the whole things, as success & failure keys are at the bottom
         if checked:
             return checked
@@ -800,5 +804,6 @@ def calcTS(TS, count):
 ########################################################################################
 count = 0
 for TS in tsStructures:
-    calcTS(TS, count)
+    if count > 242:
+        calcTS(TS, count)
     count += 1
