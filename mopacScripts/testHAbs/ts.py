@@ -29,7 +29,7 @@ reactRecipe = ReactionRecipe(actions)
 
 template = KineticsFamily(forwardRecipe=reactRecipe)
 
-trusted = open('/Users/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py')
+trusted = open('/home/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py')
 
 lines = trusted.readlines()
 k = 0
@@ -76,8 +76,10 @@ for idx in range(1, len(reactants1) + 1):
 
 ########################################################################################    
 inputFileExtension = '.mop'
+inputFileExtension2 = '.gjf'
 outputFileExtension = '.out'
 executablePath = os.path.join(os.getenv('MOPAC_DIR', default="/opt/mopac") , 'MOPAC2012.exe')
+executablePath2 = os.path.join(os.getenv('GAUSS_EXEDIR') , 'g09')
 attempt = 1
 
 usePolar = False
@@ -364,7 +366,29 @@ def writeGeoRefInputFile(inputFilePath, molFilePathForCalc, refFilePath, geometr
         mopacFile.write(input_string)
         mopacFile.write('\n')
 
+def writeDFTTSInputFile(inputFilePath, outputFile, count):
+    
+    parseOutput = cclib.parser.Mopac(outputFile)
+    parseOutput = parseOutput.parse()
+    reload(openbabel)
+    mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
+    mol.SetTotalSpinMultiplicity(2)
+    obConversion = openbabel.OBConversion()
+    obConversion.SetInAndOutFormats("mol", "gjf")
+    mol.SetTitle('transitionState' + str(count))
+    obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
+    input_string = obConversion.WriteString(mol)
+    numProc = "%NProcShared=4"
+    top_keys = "# m062x/6-31+g(d,p) opt=(ts,calcall,tight,noeigentest,cartesian) int=ultrafine nosymm"
+    
+    with open(inputFilePath, 'w') as gaussianFile:
+        gaussianFile.write(numProc)
+        gaussianFile.write('\n')
+        gaussianFile.write(top_keys)
+        gaussianFile.write(input_string)
+
 def writeTSInputFile(inputFilePath, saddleOutput, count):
+    
     obConversion = openbabel.OBConversion()
     obConversion.SetInAndOutFormats("mol", "mop")
     parseOutput = cclib.parser.Mopac(saddleOutput)
@@ -742,6 +766,7 @@ def calcTS(TS, count):
     if rightGeom == 1:
         # Split the reactants and products in order to calculate their energies
         # and generate the geometries
+        
         rct1, rct2 = reactant.split()
         
         rct1 = fixSortLabel(rct1)
@@ -797,8 +822,42 @@ def calcTS(TS, count):
     
     writeRxnOutputFile(rOutputDataFile, reactant, product, deltaE, vibFreq, activeAts, atomDist, notes)
 
+def calcDFTTS(TS, count):
+    quantumMechanics = QMCalculator()
+    quantumMechanics.settings.software = 'gaussian'
+    quantumMechanics.settings.fileStore = 'QMfiles'
+    quantumMechanics.settings.scratchDirectory = 'scratch'
+    quantumMechanics.settings.onlyCyclics = False
+    quantumMechanics.settings.maxRadicalNumber = 0
+    
+    if count < 10:
+        fileNum = '00' + str(count)
+    elif count < 100:
+        fileNum = '0' + str(count)
+    else:
+        fileNum = str(count)
+    
+    reactant = fixSortLabel(TS[0])
+    product = fixSortLabel(TS[1])
+    
+    # TS file paths
+    tsInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'transitionState' + inputFileExtension)
+    tsDFTInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'transitionStateDFT' + inputFileExtension2)
+    ircInput = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'irc' + inputFileExtension)
+    
+    tsOutPath = tsInPath.split('.')[0] + outputFileExtension
+    tsDFTOutPath = tsDFTInPath.split('.')[0] + outputFileExtension
+    ircOutput = ircInput.split('.')[0] + outputFileExtension
+    
+    # Split the reactants and products in order to calculate their energies
+    # and generate the geometries
+    writeDFTTSInputFile(tsDFTInPath, tsOutPath, count)
+    run(executablePath2, tsDFTInPath, tsDFTOutPath)
+        
 ########################################################################################
 count = 0
 for TS in tsStructures:
-    calcTS(TS, count)
+    # calcTS(TS, count)
+    if count > 212 and count < 217: 
+        calcDFTTS(TS, count)
     count += 1
