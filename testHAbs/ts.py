@@ -27,7 +27,7 @@ reactRecipe = ReactionRecipe(actions)
 
 template = KineticsFamily(forwardRecipe=reactRecipe)
 
-trusted = open('../../RMG-database/input/kinetics/families/H_Abstraction/depository.py')
+trusted = open('/Users/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py')
 
 lines = trusted.readlines()
 k = 0
@@ -67,7 +67,7 @@ for idx in range(1, len(reactants1) + 1):
 ########################################################################################    
 
 inputFileExtension = '.gjf'
-outputFileExtension = '.out'
+outputFileExtension = '.log'
 executablePath = os.path.join(os.getenv('GAUSS_EXEDIR') , 'g09')
 attempt = 1
 
@@ -314,10 +314,20 @@ def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, 
         gaussianFile.write(input_string)
         gaussianFile.write('\n')
 
-def writeTSInputFile(inputFilePath, geometryR, geometryP):
-    chk_file = '%chk=' + inputFilePath.split('.')[0]
-    top_keys = "# pm6 opt=(ts,nofreeze,calcall,tight,noeigentest) geom=allcheck guess=check nosymm"
-    title = ' ' + geometryR.uniqueIDlong + ' ' + geometryP.uniqueIDlong
+def writeTSInputFile(inputFilePath, molFilePathForCalc, geometry, family):
+    obConversion = openbabel.OBConversion()
+    obConversion.SetInAndOutFormats("mol", "gjf")
+    mol = openbabel.OBMol()
+    
+    obConversion.ReadFile(mol, molFilePathForCalc )
+    
+    mol.SetTitle(geometry.uniqueIDlong)
+    obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
+    input_string = obConversion.WriteString(mol)
+    top_keys = inputFileKeywords(attempt)
+    
+    top_keys = "# b3lyp/6-31+g(d,p) opt=(ts,calcall,noeigentest) geom=allcheck guess=check nosymm"
+    title = ' ' + geometry.uniqueIDlong + '' + family
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
@@ -403,12 +413,12 @@ def generateKineticData():
     pass
 
 def editMatrix(bm, lbl1, lbl2, num, diff):
-    if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
+    if lbl1 > lbl2:
+        bm[lbl2][lbl1] = bm[lbl2][lbl1] + diff
+        bm[lbl1][lbl2] = num
+    else:
         bm[lbl2][lbl1] = num
         bm[lbl1][lbl2] = bm[lbl2][lbl1] + diff
-    else:
-        bm[lbl1][lbl2] = num
-        bm[lbl2][lbl1] = bm[lbl1][lbl2] + diff
     
     return bm
 
@@ -421,62 +431,40 @@ def calculate(TS, count):
     quantumMechanics.settings.maxRadicalNumber = 0
     
     reactant = fixSortLabel(TS[0])
-    product = fixSortLabel(TS[1])
-    rRDMol, rBM, rMult = generateBoundsMatrix(reactant, quantumMechanics.settings)
-    pRDMol, pBM, pMult = generateBoundsMatrix(product, quantumMechanics.settings)
+    rRDMol, tsBM, tsMult = generateBoundsMatrix(reactant, quantumMechanics.settings)
     
     # edit bounds distances to align reacting atoms
     if family.lower() == 'h_abstraction':
+        sect = len(reactant.split()[1].atoms)
+        
+        tsBM[sect:,:sect] -= 0.5
+        
         lbl1 = reactant.getLabeledAtom('*1').sortingLabel
         lbl2 = reactant.getLabeledAtom('*2').sortingLabel
         lbl3 = reactant.getLabeledAtom('*3').sortingLabel
     
-        rBM = editMatrix(rBM, lbl1, lbl3, 2.5, 0.2)
-        rBM = editMatrix(rBM, lbl2, lbl3, 2.0, 0.1)
-    
-        pBM = editMatrix(pBM, lbl1, lbl2, 2.0, 0.1)
-        pBM = editMatrix(pBM, lbl1, lbl3, 2.5, 0.2)
-    
-    for i in range(0, len(rBM)):
-            for k in range(0, len(rBM)):
-                if rBM[i][k] == 1000.:
-                    rBM[i][k] = 2 * rBM[k][i]
-                if pBM[i][k] == 1000.:
-                    pBM[i][k] = 2 * pBM[k][i]
+        tsBM = editMatrix(rBM, lbl1, lbl3, 1.6, 0.2)
+        tsBM = editMatrix(rBM, lbl2, lbl3, 1.0, 0.2)
+        tsBM = editMatrix(rBM, lbl1, lbl2, 1.0, 0.2)
                         
-    rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
-    rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
+    embed = rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
+    # rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
     
-    rsorted_atom_list = reactant.vertices[:]
-    psorted_atom_list = product.vertices[:]
-    qmcalcR = rmgpy.qm.gaussian.GaussianMolPM3(reactant, quantumMechanics.settings)
-    qmcalcP = rmgpy.qm.gaussian.GaussianMolPM3(product, quantumMechanics.settings)
-    reactant.vertices = rsorted_atom_list
-    product.vertices = psorted_atom_list
-    
-    qmcalcR.createGeometry(rBM)
-    qmcalcP.createGeometry(pBM)
-    
-    geometryR = qmcalcR.geometry
-    geometryP = qmcalcR.geometry
-    
-    rinputFilePath = qmcalcR.inputFilePath
-    routputFilePath = qmcalcR.outputFilePath
-    rmolFilePathForCalc = qmcalcR.getMolFilePathForCalculation(attempt)
-    
-    pinputFilePath = qmcalcP.inputFilePath
-    poutputFilePath = qmcalcR.outputFilePath
-    pmolFilePathForCalc = qmcalcP.getMolFilePathForCalculation(attempt)
-    
-    inputFilePath = rinputFilePath
-    outputFilePath = poutputFilePath
-    tsFilePath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.gjf')
-    tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.out')
-    writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP)
-    run(executablePath, tsFilePath, tsOutPath)
-    # 
-    # writeTSInputFile(tsFilePath, geometryR, geometryP)
-    # run(executablePath, tsFilePath, tsOutPath)
+    if embed:
+        tssorted_atom_list = reactant.vertices[:]
+        qmcalcTS = rmgpy.qm.gaussian.GaussianMolPM3(reactant, quantumMechanics.settings)
+        reactant.vertices = tssorted_atom_list
+        
+        qmcalcR.createGeometry(tsBM)
+        
+        geometryTS = qmcalcTS.geometry
+        
+        tsmolFilePathForCalc = qmcalcR.getMolFilePathForCalculation(attempt)
+        
+        tsFilePath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.gjf')
+        tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.out')
+        writeTSInputFile(tsFilePath, tsmolFilePathForCalc, geometryTS, family)
+        run(executablePath, tsFilePath, tsOutPath)
 
 ########################################################################################
     
