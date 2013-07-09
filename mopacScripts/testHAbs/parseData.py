@@ -31,7 +31,7 @@ for files in glob.glob("QMfiles/data*"):
 	loadFile.pop(0)
 	infoLines = []
 	for line in loadFile:
-		infoLines.append(line.split('=')[-1])
+		infoLines.append(line.split('=', 1)[-1])
 	for j in range(len(infoLines)):
 		sheet.write(i, j+1,infoLines[j])
 	i+=1
