@@ -174,268 +174,245 @@ def generateBoundsMatrix(molecule, settings):
 
     return rdKitMol, boundsMatrix, multiplicity
 
-def atoms(mol):
-    atoms = {}
-    for atom in mol:
-        args = atom.split()
-        index = int(args.pop(0))
-        if '*' in args[0]:
-            label = args.pop(0)
-        else:
-            label = '  '
-        type = args.pop(0)
-        rad = args.pop(0)
-        bonds = {}
-        while args:
-            bond = args.pop(0)[1:-1].split(',')
-            bonds[int(bond[0])] = bond[1]
-        atoms[index] = {'label': label, 'type': type,
-                        'rad': rad, 'bonds': bonds}
-    return atoms
-
-def adjlist(atoms):
-    str = ''
-    for key in atoms:
-        atom = atoms[key]
-        str += '\n{0:<{1}}{2}'.format(key,
-                                      len('{0}'.format(max(atoms.keys()))) + 1,
-                                      atom['label'])
-        str += ' {0} {1}'.format(atom['type'], atom['rad'])
-        for key0 in sorted(atom['bonds'].keys()):
-            str += ' {' + '{0},{1}'.format(key0, atom['bonds'][key0]) + '}'
-    return str.strip() + '\n'
-
-def bondForm(fullString, otherIdx, bond):
-    fullString = fullString + ' {' + str(otherIdx) + ',' + bond + '}'
-    
-    return fullString
-    
-def bondBreak(fullString, otherIdx):
-    splits = fullString.split('{')
-    i = 0
-    for lineSplit in splits:
-        if lineSplit.split(',')[0] == str(otherIdx):
-            splits.pop(i)
-        i += 1
-    fullString = splits[0]
-    for k in range(1, len(splits)):
-        fullString = fullString + '{' + splits[k]
-    return fullString
-
-def radChange(fullString, action, decrease = False):
-    
-    radChg = fullString[8]
-    if decrease:
-        radNum = int(radChg) - int(action)
-    else:
-        radNum = int(radChg) + int(action)
-    radNum = str(radNum)
-    fullString = fullString.replace(' ' + radChg + ' ', ' ' + radNum + ' ')
-    
-    return fullString
-
-def matchAtoms(reactant):
-    newadjlist = reactant.toAdjacencyList().strip().splitlines()
-    radjlist = reactant.toAdjacencyList().strip().splitlines()
-    rdict = {}
-    for line in radjlist:
-        if line.find('*') > -1:
-            rdict[line.split()[1]] = int(line.split()[0])
-    
-    for action in actions:
-        if action[0].lower() == 'break_bond':
-            idx1 = rdict[action[1]]
-            idx2 = rdict[action[3]]
-            
-            edit1 = newadjlist.pop(idx1 - 1)
-            edit1 = bondBreak(edit1, idx2)
-            newadjlist.insert(idx1 - 1, edit1)
-            
-            edit2 = newadjlist.pop(idx2 - 1)
-            edit2 = bondBreak(edit2, idx1)
-            newadjlist.insert(idx2 - 1, edit2)
-        elif action[0].lower() == 'form_bond':
-            idx1 = rdict[action[1]]
-            idx2 = rdict[action[3]]
-            
-            edit1 = newadjlist.pop(idx1 - 1)
-            edit1 = bondForm(edit1, idx2, action[2])
-            newadjlist.insert(idx1 - 1, edit1)
-            
-            edit2 = newadjlist.pop(idx2 - 1)
-            edit2 = bondForm(edit2, idx1, action[2])
-            newadjlist.insert(idx2 - 1, edit2)
-        elif action[0].lower() == 'gain_radical':
-            idx = rdict[action[1]]
-            
-            edit = newadjlist.pop(idx - 1)
-            edit = radChange(edit, action[2])
-            newadjlist.insert(idx - 1, edit)
-        elif action[0].lower() == 'lose_radical':
-            idx = rdict[action[1]]
-            
-            edit = newadjlist.pop(idx - 1)
-            edit = radChange(edit, action[2], decrease = True)
-            newadjlist.insert(idx - 1, edit)
-    return newadjlist
-        
-def writeInputFile():
-    """
-    Using the :class:`Geometry` object, write the input file
-    for the `attmept`th attempt.
-    """
-
-    obConversion = openbabel.OBConversion()
-    obConversion.SetInAndOutFormats("mol", "gjf")
-    mol = openbabel.OBMol()
-
-    obConversion.ReadFile(mol, molFilePathForCalc )
-
-    mol.SetTitle(geometry.uniqueIDlong)
-    obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
-    input_string = obConversion.WriteString(mol)
-    chk_file = '%chk=' + chkFilePath
-    top_keys = inputFileKeywords(attempt)
-    with open(inputFilePath, 'w') as gaussianFile:
-        gaussianFile.write(chk_file)
-        gaussianFile.write('\n')
-        gaussianFile.write(top_keys)
-        gaussianFile.write(input_string)
-        gaussianFile.write('\n')
-
-def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP):
-    chk_file = '%chk=' + inputFilePath.split('.')[0]
-    obrConversion = openbabel.OBConversion()
-    obrConversion.SetInAndOutFormats("mol", "gjf")
-    molR = openbabel.OBMol()
-    obrConversion.ReadFile(molR, rmolFilePathForCalc )
-    molR.SetTitle(geometryR.uniqueIDlong)
-    obrConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
-    
-    obpConversion = openbabel.OBConversion()
-    obpConversion.SetInAndOutFormats("mol", "gjf")
-    molP = openbabel.OBMol()
-    obpConversion.ReadFile(molP, pmolFilePathForCalc )
-    molP.SetTitle(geometryP.uniqueIDlong)
-    obpConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
-    
-    # all of the first molecule, and remove the first 2 lines (the '\n') from the second
-    input_string = obrConversion.WriteString(molR) + obpConversion.WriteString(molP)[2:]
-    top_keys = "# pm6 opt=(qst2,calcfc,nofreeze) nosymm"
-    with open(inputFilePath, 'w') as gaussianFile:
-        gaussianFile.write(chk_file)
-        gaussianFile.write('\n')
-        gaussianFile.write(top_keys)
-        gaussianFile.write(input_string)
-        gaussianFile.write('\n')
-
 def writeTSInputFile(inputFilePath, molFilePathForCalc, geometry, family):
+    chk_file = '%chk=' + inputFilePath.split('.')[0]
     obConversion = openbabel.OBConversion()
     obConversion.SetInAndOutFormats("mol", "gjf")
     mol = openbabel.OBMol()
-    
+
     obConversion.ReadFile(mol, molFilePathForCalc )
-    
+
     mol.SetTitle(geometry.uniqueIDlong)
     obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
     input_string = obConversion.WriteString(mol)
-    top_keys = inputFileKeywords(attempt)
-    
-    top_keys = "# b3lyp/6-31+g(d,p) opt=(ts,calcall,noeigentest) geom=allcheck guess=check nosymm"
+    numProc = "%NProcShared=4"
+    top_keys = "# m062x/6-31+g(d,p) opt=(ts,calcall,tight,noeigentest)  int=ultrafine nosymm"
     title = ' ' + geometry.uniqueIDlong + '' + family
     with open(inputFilePath, 'w') as gaussianFile:
+        gaussianFile.write(numProc)
+        gaussianFile.write('\n')
+        gaussianFile.write(chk_file)
+        gaussianFile.write('\n')
+        gaussianFile.write(top_keys)
+        gaussianFile.write(input_string)
+
+def writeTSCartInput(inputFilePath, count):
+    chk_file = '%chk=' + inputFilePath.split('.')[0]
+    top_keys = "# m062x/6-31+g(d,p) opt=(ts,calcall,tight,noeigentest,cartesian)  int=ultrafine nosymm geom=allcheck guess=check nosymm"
+    numProc = "%NProcShared=4"
+
+    # Normally you need to calculate these
+    chg_mult = '1 2'
+    with open(inputFilePath, 'w') as gaussianFile:
+        gaussianFile.write(numProc)
+        gaussianFile.write('\n')
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
         gaussianFile.write(top_keys)
         gaussianFile.write('\n\n')
-        gaussianFile.write(title)
+        gaussianFile.write(chg_mult)
         gaussianFile.write('\n\n')
 
-def writeModRedundantFile():
-    chk_file = '%chk=' + chkFilePath
-    top_keys = "# pm3 opt=(modredundant) geom=(allcheck) guess=check nosymm"
-    bottom_keys = 'B 1 2 += 0.1 F'
+def writeSubFile(filename):
+    fout = open(filename + '.sh', "w")
+    fout.write('#!/bin/sh\n')
+    fout.write('#BSUB -n 4\n')
+    fout.write('#BSUB -o ' + filename + '.log\n')
+    fout.write('#BSUB -e error' + filename.split('e')[-1] + '\n')
+    fout.write('#BSUB -J ' + filename.split('e')[-1] + '\n\n')
+    fout.write('export GAUSS_EXEDIR=/shared/g09\n')
+    fout.write('export PATH=$GAUSS_EXEDIR:$PATH\n\n')
+    fout.write('g09 < ' + filename + '.gjf' + '\n\n')
+    fout.close()
+
+def writeIRCInput(inputFilePath, count):
+    chk_file = '%chk=' + inputFilePath.split('IRC')[0] + str(count)
+    top_keys = "# m062x/6-31+g(d,p) irc=(calcall,report=read) geom=allcheck guess=check nosymm"
+    numProc = "%NProcShared=4"
+
+    # Normally you need to calculate these
+    chg_mult = '1 2'
     with open(inputFilePath, 'w') as gaussianFile:
+        gaussianFile.write(numProc)
+        gaussianFile.write('\n')
         gaussianFile.write(chk_file)
         gaussianFile.write('\n')
         gaussianFile.write(top_keys)
         gaussianFile.write('\n\n')
-        gaussianFile.write(bottom_keys)
-        gaussianFile.write('\n')
-        
-def writeModRedundantFile1():
-    obConversion = openbabel.OBConversion()
-    obConversion.SetInAndOutFormats("mol", "gjf")
-    mol = openbabel.OBMol()
-    
-    obConversion.ReadFile(mol, molFilePathForCalc )
-    
-    mol.SetTitle(geometry.uniqueIDlong)
-    obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
-    input_string = obConversion.WriteString(mol)
-    chk_file = '%chk=' + chkFilePath
-    top_keys = "# pm3 opt=(modredundant) nosymm"
-    bottom_keys1 = 'B 4 9 += 0.1 F'
-    bottom_keys2 = 'B 5 9 += -0.1 F'
-    with open(inputFilePath, 'w') as gaussianFile:
-        gaussianFile.write(chk_file)
-        gaussianFile.write('\n')
-        gaussianFile.write(top_keys)
-        gaussianFile.write(input_string)
-        gaussianFile.write(bottom_keys1)
-        gaussianFile.write('\n')
-        gaussianFile.write(bottom_keys2)
-        gaussianFile.write('\n')
-        
-def writeModRedundantFile2():
-    chk_file = '%chk=' + chkFilePath
-    top_keys = "# pm3 opt=(modredundant) geom=(allcheck) guess=check nosymm"
-    bottom_keys1 = 'B 4 9 += 0.1 F'
-    bottom_keys2 = 'B 5 9 += -0.1 F'
-    with open(inputFilePath, 'w') as gaussianFile:
-        gaussianFile.write(chk_file)
-        gaussianFile.write('\n')
-        gaussianFile.write(top_keys)
+        gaussianFile.write(chg_mult)
         gaussianFile.write('\n\n')
-        gaussianFile.write(bottom_keys1)
-        gaussianFile.write('\n')
-        gaussianFile.write(bottom_keys2)
-        gaussianFile.write('\n')
-            
-def convertOutputToInput():
-    obConversion = openbabel.OBConversion()
-    obConversion.SetInAndOutFormats("g09", "gjf")
-    mol = openbabel.OBMol()
-    
-    obConversion.ReadFile(mol, outputFilePath)
-    
-    mol.SetTitle(geometry.uniqueIDlong)
-    obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
-    input_string = obConversion.WriteString(mol)
-    chk_file = '%chk=' + chkFilePath
-    top_keys = "# pm3 opt=(modredundant)"
-    bottom_keys = '1 2 F'
-    with open(inputFilePath, 'w') as gaussianFile:
-        gaussianFile.write(chk_file)
-        gaussianFile.write('\n')
-        gaussianFile.write(top_keys)
-        gaussianFile.write(input_string)
-        gaussianFile.write('\n')
-        gaussianFile.write(bottom_keys)
-        gaussianFile.write('\n')
+
+def checkIRC(ircOutPath):
+    readFile = file(ircOutPath)
+    lineList = list()
+    for line in readFile.readlines():
+        if line.startswith(' Point Number:'):
+            lineList.append(line)
+
+    pth1 = 0
+    pth2 = int(lineList[-1].split()[2])
+    test = int(lineList[-1].split()[-1])
+    for line in lineList:
+        if int(line.split()[-1]) == test:
+            return pth1, pth2
+        else:
+            pth1 = int(line.split()[2])
+
+def fromXYZ(molGeom, atomnos):
+    """
+    Takes cartesian coordinates and the associated atoms and generates
+    an RMG molecule.
+    """
+    obMol = external.cclib.bridge.makeopenbabel(molGeom, atomnos)
+    rmgMol = Molecule().fromOBMol(obMol)
+
+    return rmgMol
+
+def testGeometries(reactant,product,ircOutput,notes):
+    """
+    Compares IRC geometries to input geometries.
+    """
+    # Search IRC output for steps on each side of the path
+    readFile = file(ircOutput)
+    pth1 = list()
+    steps = list()
+    for line in readFile.readlines():
+        if line.startswith(' Point Number:'):
+            if int(line.split()[2]) > 0:
+                if int(line.split()[-1]) == 1:
+                    ptNum = int(line.split()[2])
+                    pth1.append(ptNum)
+                else:
+                    pass
+        elif line.startswith('  # OF STEPS ='):
+            numStp = int(line.split()[-1])
+            steps.append(numStp)
+
+    # This indexes the coordinate to be used from the parsing
+    if steps == []:
+        notes = ' IRC failed '
+        return 0, notes
+    else:
+        pth1End = sum(steps[:pth1[-1]])		
+        # Compare the reactants and products
+        ircParse = external.cclib.parser.Gaussian(ircOutput)
+        ircParse = ircParse.parse()
+
+        atomnos = ircParse.atomnos
+        atomcoords = ircParse.atomcoords
+
+        # Convert the IRC geometries into RMG molecules
+        # We don't know which is reactant or product, so take the two at the end of the
+        # paths and compare to the reactants and products
+
+        mol1 = fromXYZ(atomcoords[pth1End], atomnos)
+        mol2 = fromXYZ(atomcoords[-1], atomnos)
+
+        # Had trouble with isIsomorphic, but resetting the connectivity seems to fix it (WHY??).
+        reactant.resetConnectivityValues()
+        product.resetConnectivityValues()
+        mol1.resetConnectivityValues()
+        mol2.resetConnectivityValues()
+
+        if reactant.isIsomorphic(mol1) and product.isIsomorphic(mol2):
+                notes = 'Verified TS'
+                return 1, notes
+        elif reactant.isIsomorphic(mol2) and product.isIsomorphic(mol1):
+                notes = 'Verified TS'
+                return 1, notes
+        else:
+            notes = 'Saddle found, but wrong one'
+            return 0, notes
 
 def generateKineticData():
     pass
 
 def editMatrix(bm, lbl1, lbl2, num, diff):
     if lbl1 > lbl2:
-        bm[lbl2][lbl1] = bm[lbl2][lbl1] + diff
+        bm[lbl2][lbl1] = num + diff
         bm[lbl1][lbl2] = num
     else:
         bm[lbl2][lbl1] = num
-        bm[lbl1][lbl2] = bm[lbl2][lbl1] + diff
-    
+        bm[lbl1][lbl2] = num + diff
+
     return bm
+
+def checkOutput(outputFile):
+    readFile = open(outputFile, 'r')
+    readFile = readFile.readlines()
+    i = 0
+    for line in reversed(readFile):
+        if line.startswith(' Normal termination of'):
+            return 1
+        elif line.startswith(' Error in internal coordinate system'):
+            return 2
+        elif i == 20:
+            return 0
+        i += 1
+
+def getAtomType(atomnum):
+    if atomnum == 1:
+        atType = 'H'
+    elif atomnum == 6:
+        atType = 'C'
+    elif atomnum == 8:
+        atType = 'O'
+    else:
+        atType = 'Could not determine atomtype'
+
+    return atType
+
+def parse(tsOutput, outputDataFile, labels):
+
+    tsParse = external.cclib.parser.Gaussian(tsOutput)
+    tsParse = tsParse.parse()
+
+    # In J/mol
+    vibFreq = tsParse.vibfreqs[0]
+
+    atom1 = openbabel.OBAtom()
+    atom2 = openbabel.OBAtom()
+    atom3 = openbabel.OBAtom()
+
+    atom1.SetAtomicNum(int(tsParse.atomnos[labels[0]]))
+    atom2.SetAtomicNum(int(tsParse.atomnos[labels[1]]))
+    atom3.SetAtomicNum(int(tsParse.atomnos[labels[2]]))
+
+    atom1coords = tsParse.atomcoords[-1][labels[0]].tolist()
+    atom2coords = tsParse.atomcoords[-1][labels[1]].tolist()
+    atom3coords = tsParse.atomcoords[-1][labels[2]].tolist()
+
+    atom1.SetVector(*atom1coords)
+    atom2.SetVector(*atom2coords)
+    atom3.SetVector(*atom3coords)
+
+    at1 = getAtomType(atom1.GetAtomicNum())
+    at2 = getAtomType(atom2.GetAtomicNum())
+    at3 = getAtomType(atom3.GetAtomicNum())
+
+    activeAts = [at1, at2, at3]
+    atomDist = [str(atom1.GetDistance(atom2)), str(atom2.GetDistance(atom3)), str(atom1.GetDistance(atom3))]
+
+    return vibFreq, activeAts, atomDist
+
+def writeRxnOutputFile(outputDataFile,reactant, product, vibFreq, activeAts, atomDist, notes):
+    # Parse the data into training set format
+    
+    item = Reaction(reactants=reactant.split(), products=product.split())
+    distances = {'d12':atomDist[0], 'd23':atomDist[1], 'd13':atomDist[2]}
+    date = time.asctime()
+    user = "Pierre Bhoorasingh <bhoorasingh.p@husky.neu.edu>"
+    description = "Found via direct estimation using automatic transition state generator"
+    entry = Entry(
+        index = 1,
+        item = item,
+        data = DistanceData(distances=distances, method='M06-2X/6-31+G(d,p)'),
+        shortDesc = "M06-2X/6-31+G(d,p) calculation via group additive automatic TS estimator.",
+        history = [(date, user, 'action', description)]
+    )
+
+    with open(outputDataFile, 'w') as parseFile:
+        saveEntry(parseFile, entry)
 
 def calculate(TS, count):
     quantumMechanics = QMCalculator()
