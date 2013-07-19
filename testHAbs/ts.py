@@ -10,6 +10,7 @@ from rmgpy.qm.main import QMCalculator
 from rmgpy.qm.molecule import Geometry
 from rmgpy.qm.reaction import QMReaction
 from rmgpy.data.kinetics import KineticsFamily, ReactionRecipe
+from rmgpy.data.kinetics.transitionstates import TransitionStates, DistanceData
 
 import rdkit
 
