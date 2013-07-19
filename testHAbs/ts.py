@@ -446,44 +446,81 @@ def calculate(TS, count):
     quantumMechanics.settings.maxRadicalNumber = 0
     
     reactant = fixSortLabel(TS[0])
+    product = fixSortLabel(TS[1])
+    
     rRDMol, tsBM, tsMult = generateBoundsMatrix(reactant, quantumMechanics.settings)
     
     # edit bounds distances to align reacting atoms
     if family.lower() == 'h_abstraction':
         sect = len(reactant.split()[1].atoms)
-        
-        tsBM[sect:,:sect] -= 0.5
-        
+    
+        tsBM[sect:,:sect] = 1.8
+    
         lbl1 = reactant.getLabeledAtom('*1').sortingLabel
         lbl2 = reactant.getLabeledAtom('*2').sortingLabel
         lbl3 = reactant.getLabeledAtom('*3').sortingLabel
+        
+        labels = [lbl1, lbl2, lbl3]
+        atomMatch = ((lbl1,),(lbl2,),(lbl3,))
+        
+        reaction = Reaction(reactants=reactant.split(), products=product.split())
+        distanceData = transitionStates.estimateDistances(reaction)
+        
+        tsBM = editMatrix(tsBM, lbl1, lbl2, distanceData.distances['d12'], 0.1)
+        tsBM = editMatrix(tsBM, lbl2, lbl3, distanceData.distances['d23'], 0.001)
+        tsBM = editMatrix(tsBM, lbl1, lbl3, distanceData.distances['d13'], 0.001)
     
-        tsBM = editMatrix(rBM, lbl1, lbl3, 1.6, 0.2)
-        tsBM = editMatrix(rBM, lbl2, lbl3, 1.0, 0.2)
-        tsBM = editMatrix(rBM, lbl1, lbl2, 1.0, 0.2)
-                        
-    embed = rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
-    # rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
+    setBM = rdkit.DistanceGeometry.DoTriangleSmoothing(tsBM)
     
-    if embed:
+    if setBM:
         tssorted_atom_list = reactant.vertices[:]
         qmcalcTS = rmgpy.qm.gaussian.GaussianMolPM3(reactant, quantumMechanics.settings)
         reactant.vertices = tssorted_atom_list
-        
-        qmcalcR.createGeometry(tsBM)
-        
+    
+        qmcalcTS.createGeometry(tsBM,atomMatch)
+    
         geometryTS = qmcalcTS.geometry
-        
-        tsmolFilePathForCalc = qmcalcR.getMolFilePathForCalculation(attempt)
-        
+        tsmolFilePathForCalc = qmcalcTS.getMolFilePathForCalculation(attempt)
+    
+        # Create filenames
         tsFilePath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.gjf')
-        tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.out')
-        writeTSInputFile(tsFilePath, tsmolFilePathForCalc, geometryTS, family)
-        run(executablePath, tsFilePath, tsOutPath)
+        tsOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionState' + str(count) + '.log')
+        ircInPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionStateIRC' + str(count) + '.gjf')
+        ircOutPath = os.path.join(quantumMechanics.settings.fileStore, 'transitionStateIRC' + str(count) + '.log')
+        tsOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'data' + str(count) + outputFileExtension)
+    
+        # QM saddle search
+        # Write and run the TS optimization
+        tsConverge = 0
+        if os.path.exists(tsOutPath):
+            tsConverge = checkOutput(tsOutPath)
+        else:
+            writeTSInputFile(tsFilePath, tsmolFilePathForCalc, geometryTS, family)
+            run(executablePath, tsFilePath, tsOutPath)
+            tsConverge = checkOutput(tsOutPath)
+    
+        # Validation
+        # Run in internal coodinates, if 2*pi angle is achieved, switch to cartesian coordinates
+        if tsConverge == 2:
+            # Error in internal coodinate system, continue calculation in cartesian
+            writeTSCartInput(tsFilePath, count)
+            run(executablePath, tsFilePath, tsOutPath)
+            tsConverge = checkOutput(tsOutPath)
+        
+        # If saddle found, write and run the IRC calculation to check the TS geometry
+        if tsConverge == 1:
+            writeIRCInput(ircInPath, count)
+            run(executablePath, ircInPath, ircOutPath)
+            if os.path.exists(ircOutPath):
+                ircCheck, notes = testGeometries(reactant, product, ircOutPath, notes)
+                if ircCheck == 1:
+                    vibFreq, activeAts, atomDist = parse(tsOutPath, tsOutputDataFile, labels)
+                    writeRxnOutputFile(tsOutputDataFile, reactant, product, vibFreq, activeAts, atomDist, notes)
 
 ########################################################################################
     
 count = 0
 for TS in tsStructures:
-    calculate(TS, count)
+    for molecule in TS[0].split():
+        calculate(TS, count)
     count += 1
