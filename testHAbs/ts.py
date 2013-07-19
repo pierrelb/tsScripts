@@ -2,7 +2,7 @@ import os
 import logging
 import openbabel
 from subprocess import Popen
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 import rmgpy
 from rmgpy.molecule import Molecule
@@ -27,7 +27,13 @@ reactRecipe = ReactionRecipe(actions)
 
 template = KineticsFamily(forwardRecipe=reactRecipe)
 
-trusted = open('/Users/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py')
+trusted = open(os.path.join(os.getenv('HOME'),'Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py'))
+
+tsPath = os.path.join(os.getenv('HOME'), 'Code/RMG-database/input/kinetics/families/H_Abstraction')
+local_context = None
+global_context = None
+transitionStates = TransitionStates()
+transitionStates.load(tsPath, local_context, global_context)
 
 lines = trusted.readlines()
 k = 0
@@ -50,6 +56,7 @@ for line in lines:
             elif lines[num].find(',') != -1:
                 break
 
+prevReactions = list()
 tsStructures = list()
 for idx in range(1, len(reactants1) + 1):
     r1 = ''
@@ -62,7 +69,14 @@ for idx in range(1, len(reactants1) + 1):
     r2 = Molecule().fromAdjacencyList(r2)
     rStruct = [r1, r2]
     pStruct, tsStruct = template.applyRecipe(rStruct, getTS=True)
-    tsStructures.append(tsStruct)
+    rxnInChI = [rStruct[0].toInChI(), rStruct[1].toInChI(), pStruct[0].toInChI(), pStruct[1].toInChI()]
+    doubleChk = 0
+    for pair in prevReactions:
+        if Counter(pair) == Counter(rxnInChI):
+            doubleChk = 1
+    if doubleChk == 0:
+        prevReactions.append(rxnInChI)
+        tsStructures.append(tsStruct)
     
 ########################################################################################    
 
