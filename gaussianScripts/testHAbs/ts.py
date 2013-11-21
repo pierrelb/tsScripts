@@ -93,24 +93,24 @@ attempt = 1
 usePolar = False
 
 keywords = [
-            "# m062x/6-31+g(d,p) opt=(verytight,gdiis) freq IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt=(verytight,gdiis) freq IOP(2/16=3) IOP(4/21=2)",
-            "# m062x/6-31+g(d,p) opt=(verytight,calcfc,maxcyc=200) freq IOP(2/16=3) nosymm" ,
-            "# m062x/6-31+g(d,p) opt=(verytight,calcfc,maxcyc=200) freq=numerical IOP(2/16=3) nosymm",
-            "# m062x/6-31+g(d,p) opt=(verytight,gdiis,small) freq IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt=(verytight,nolinear,calcfc,small) freq IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt=(verytight,gdiis,maxcyc=200) freq=numerical IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt=tight freq IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt=tight freq=numerical IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt=(tight,nolinear,calcfc,small,maxcyc=200) freq IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt freq IOP(2/16=3)",
-            "# m062x/6-31+g(d,p) opt=(verytight,gdiis) freq=numerical IOP(2/16=3) IOP(4/21=200)",
-            "# m062x/6-31+g(d,p) opt=(calcfc,verytight,newton,notrustupdate,small,maxcyc=100,maxstep=100) freq=(numerical,step=10) IOP(2/16=3) nosymm",
-            "# m062x/6-31+g(d,p) opt=(tight,gdiis,small,maxcyc=200,maxstep=100) freq=numerical IOP(2/16=3) nosymm",
-            "# m062x/6-31+g(d,p) opt=(tight,gdiis,small,maxcyc=200,maxstep=100) freq=numerical IOP(2/16=3) nosymm",
-            "# m062x/6-31+g(d,p) opt=(verytight,gdiis,calcall,small,maxcyc=200) IOP(2/16=3) IOP(4/21=2) nosymm",
-            "# m062x/6-31+g(d,p) opt=(verytight,gdiis,calcall,small) IOP(2/16=3) nosymm",
-            "# m062x/6-31+g(d,p) opt=(calcall,small,maxcyc=100) IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,gdiis) freq IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,gdiis) freq IOP(2/16=3) IOP(4/21=2)",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,calcfc,maxcyc=200) freq IOP(2/16=3) nosymm" ,
+            "# b3lyp/6-31+g(d,p) opt=(verytight,calcfc,maxcyc=200) freq=numerical IOP(2/16=3) nosymm",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,gdiis,small) freq IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,nolinear,calcfc,small) freq IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,gdiis,maxcyc=200) freq=numerical IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=tight freq IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=tight freq=numerical IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=(tight,nolinear,calcfc,small,maxcyc=200) freq IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt freq IOP(2/16=3)",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,gdiis) freq=numerical IOP(2/16=3) IOP(4/21=200)",
+            "# b3lyp/6-31+g(d,p) opt=(calcfc,verytight,newton,notrustupdate,small,maxcyc=100,maxstep=100) freq=(numerical,step=10) IOP(2/16=3) nosymm",
+            "# b3lyp/6-31+g(d,p) opt=(tight,gdiis,small,maxcyc=200,maxstep=100) freq=numerical IOP(2/16=3) nosymm",
+            "# b3lyp/6-31+g(d,p) opt=(tight,gdiis,small,maxcyc=200,maxstep=100) freq=numerical IOP(2/16=3) nosymm",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,gdiis,calcall,small,maxcyc=200) IOP(2/16=3) IOP(4/21=2) nosymm",
+            "# b3lyp/6-31+g(d,p) opt=(verytight,gdiis,calcall,small) IOP(2/16=3) nosymm",
+            "# b3lyp/6-31+g(d,p) opt=(calcall,small,maxcyc=100) IOP(2/16=3)",
             ]
 
 @property
@@ -192,8 +192,8 @@ def writeInputFile(inputFilePath, molFilePathForCalc, geometry, attempt):
     mol.SetTitle(geometry.uniqueIDlong)
     obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
     input_string = obConversion.WriteString(mol)
-    top_keys = "# m062x/6-31+g(d,p) opt=(nofreeze,calcall,tight,noeigentest) nosymm"
-    numProc = "%NProcShared=8"
+    top_keys = "# b3lyp/6-31+g(d,p) opt=(nofreeze,calcall,tight,noeigentest) int=ultrafine nosymm"
+    numProc = "%NProcShared=4"
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(numProc)
         gaussianFile.write('\n')
@@ -219,8 +219,8 @@ def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, 
 
     # all of the first molecule, and remove the first 2 lines (the '\n') from the second
     input_string = obrConversion.WriteString(molR) + obpConversion.WriteString(molP)[2:]
-    top_keys = "# b3lyp/6-31+g(d,p) opt=(qst2,nofreeze,calcall,tight,noeigentest) nosymm"
-    numProc = "%NProcShared=8"
+    top_keys = "# b3lyp/6-31+g(d,p) opt=(qst2,nofreeze,calcall,noeigentest) nosymm"
+    numProc = "%NProcShared=4"
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(numProc)
         gaussianFile.write('\n')
@@ -233,10 +233,10 @@ def writeQST2InputFile(inputFilePath, rmolFilePathForCalc, pmolFilePathForCalc, 
 def writeTSInputFile(inputFilePath, trial):
     chk_file = '%chk=' + inputFilePath.split('.')[0]
     if trial == 1:
-        top_keys = "# m062x/6-31+g(d,p) opt=(ts,nofreeze,calcall,tight,noeigentest) geom=allcheck guess=check nosymm"
+        top_keys = "# b3lyp/6-31+g(d,p) opt=(ts,nofreeze,calcall,tight,noeigentest) int=ultrafine geom=allcheck guess=check nosymm"
     elif trial == 2:
-        top_keys = "# m062x/6-31+g(d,p) opt=(ts,nofreeze,calcall,tight,noeigentest,cartesian) geom=allcheck guess=check nosymm"
-    numProc = "%NProcShared=8"    
+        top_keys = "# b3lyp/6-31+g(d,p) opt=(ts,nofreeze,calcall,tight,noeigentest,cartesian) int=ultrafine geom=allcheck guess=check nosymm"
+    numProc = "%NProcShared=4"    
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(numProc)
         gaussianFile.write('\n')
@@ -247,10 +247,10 @@ def writeTSInputFile(inputFilePath, trial):
 
 def writeIRCInput(inputFilePath):
     chk_file = '%chk=' + inputFilePath.split('IRC')[0]
-    top_keys = "# m062x/6-31+g(d,p) irc=(calcall,report=read) geom=allcheck guess=check nosymm"
+    top_keys = "# b3lyp/6-31+g(d,p) irc=(calcall,report=read) geom=allcheck guess=check nosymm"
     # Normally you need to calculate these
     chg_mult = '1 2'
-    numProc = "%NProcShared=8"    
+    numProc = "%NProcShared=4"    
     with open(inputFilePath, 'w') as gaussianFile:
         gaussianFile.write(numProc)
         gaussianFile.write('\n')
@@ -343,13 +343,49 @@ def testGeometries(reactant,product,ircOutput,notes):
             notes = 'Saddle found, but wrong one'
             return 0, notes
 
-def editMatrix(bm, lbl1, lbl2, num, diff):
-    if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
-        bm[lbl2][lbl1] = num
-        bm[lbl1][lbl2] = bm[lbl2][lbl1] + diff
+def editMatrix(bm, lbl1, lbl2, lbl3, num, diff):
+    if bm[lbl1][lbl3] > bm[lbl3][lbl1]:
+        bm[lbl3][lbl1] = num
+        bm[lbl1][lbl3] = num + diff
     else:
-        bm[lbl1][lbl2] = num
-        bm[lbl2][lbl1] = bm[lbl1][lbl2] + diff
+        bm[lbl3][lbl1] = num + diff
+        bm[lbl1][lbl3] = num
+
+    if bm[lbl2][lbl3] == 1000. or bm[lbl3][lbl2] == 1000.:
+        checkSide = True
+    else:
+        checkSide = False
+
+    if checkSide:
+        if bm[lbl2][lbl3] > bm[lbl3][lbl2]:
+            if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
+                bm[lbl3][lbl2] = num - bm[lbl2][lbl1] - diff / 2.0
+                bm[lbl2][lbl3] = num - bm[lbl1][lbl2] + diff / 2.0
+            else:
+                bm[lbl3][lbl2] = num - bm[lbl1][lbl2] - diff / 2.0
+                bm[lbl2][lbl3] = num - bm[lbl2][lbl1] + diff / 2.0
+        else:
+            if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
+                bm[lbl2][lbl3] = num - bm[lbl2][lbl1] - diff / 2.0
+                bm[lbl3][lbl2] = num - bm[lbl1][lbl2] + diff / 2.0
+            else:
+                bm[lbl2][lbl3] = num - bm[lbl1][lbl2] - diff / 2.0
+                bm[lbl3][lbl2] = num - bm[lbl2][lbl1] + diff / 2.0
+    else:
+        if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
+            if bm[lbl2][lbl3] > bm[lbl3][lbl2]:
+                bm[lbl2][lbl1] = num - bm[lbl3][lbl2] - diff / 2.0
+                bm[lbl1][lbl2] = num - bm[lbl2][lbl3] + diff / 2.0
+            else:
+                bm[lbl2][lbl1] = num - bm[lbl2][lbl3] - diff / 2.0
+                bm[lbl1][lbl2] = num - bm[lbl3][lbl2] + diff / 2.0
+        else:
+            if bm[lbl2][lbl3] > bm[lbl3][lbl2]:
+                bm[lbl1][lbl2] = num - bm[lbl3][lbl2] - diff / 2.0
+                bm[lbl2][lbl1] = num - bm[lbl2][lbl3] + diff / 2.0
+            else:
+                bm[lbl1][lbl2] = num - bm[lbl2][lbl3] - diff / 2.0
+                bm[lbl2][lbl1] = num - bm[lbl3][lbl2] + diff / 2.0
 
     return bm
 
@@ -409,18 +445,18 @@ def parse(tsOutput, outputDataFile, labels):
 
     return vibFreq, activeAts, atomDist
 
-def writeRxnOutputFile(outputDataFile,reactant, product, vibFreq, activeAts, atomDist, notes):
+def writeRxnOutputFile(self):outputDataFile,reactant, product, vibFreq, activeAts, atomDist, notes):
 
     item = Reaction(reactants=reactant.split(), products=product.split())
     distances = {'d12':atomDist[0], 'd23':atomDist[1], 'd13':atomDist[2]}
     date = time.asctime()
     user = "Pierre Bhoorasingh <bhoorasingh.p@husky.neu.edu>"
-    description = "Found via direct estimation using automatic transition state generator"
+    description = "Found via group estimation strategy using automatic transition state generator"
     entry = Entry(
         index = 1,
-        item = item,
-        data = DistanceData(distances=distances, method='M06-2X/6-31+G(d,p)'),
-        shortDesc = "M06-2X/6-31+G(d,p) calculation via group additive automatic TS estimator.",
+        item = self.reaction,
+        data = DistanceData(distances=distances, method='B3LYP/6-31+G(d,p)'),
+        shortDesc = "B3LYP/6-31+G(d,p) calculation via double-ended TS generator.",
         history = [(date, user, 'action', description)]
     )
     star3 = product.getLabeledAtom('*1').sortingLabel
@@ -464,19 +500,38 @@ def calcTS(TS, count):
     rRDMol, rBM, rMult, rGeom = generateBoundsMatrix(reactant, quantumMechanics.settings)
     pRDMol, pBM, pMult, pGeom = generateBoundsMatrix(product, quantumMechanics.settings)
 
+    # decrease the vdwRadii
+    for i in range(len(rBM)):
+        for k in range(len(rBM)):
+            if rBM[i][k] == 1000.0:
+                rBM[k][i] -= 1.2
+            if pBM[i][k] == 1000.0:
+                pBM[k][i] -= 1.2
+
     #edit bounds distances to align reacting atoms
     if family.lower() == 'h_abstraction':
-        lbl1 = reactant.getLabeledAtom('*1').sortingLabel
-        lbl2 = reactant.getLabeledAtom('*2').sortingLabel
-        lbl3 = reactant.getLabeledAtom('*3').sortingLabel
+        at1 = reactant.getLabeledAtom('*1')
+        at2 = reactant.getLabeledAtom('*2')
+        at3 = reactant.getLabeledAtom('*3')
+
+        lbl1 = at1.sortingLabel
+        lbl2 = at2.sortingLabel
+        lbl3 = at3.sortingLabel
 
         labels = [lbl1, lbl2, lbl3]
 
-        rBM = editMatrix(rBM, lbl1, lbl3, 2.5, 0.1)
-        rBM = editMatrix(rBM, lbl2, lbl3, 2.0, 0.1)
-
-        pBM = editMatrix(pBM, lbl1, lbl2, 2.0, 0.1)
-        pBM = editMatrix(pBM, lbl1, lbl3, 2.5, 0.1)
+        if (at1.symbol == 'H' and at3.symbol == 'C') or (at1.symbol == 'C' and at3.symbol == 'H'):
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.2, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.2, 0.1)
+        elif (at1.symbol == 'H' and at3.symbol == 'O') or (at1.symbol == 'O' and at3.symbol == 'H'):
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.1, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.1, 0.1)
+        elif at1.symbol == 'O' and at3.symbol == 'O':
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.2, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.2, 0.1)
+        else:
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.5, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.5, 0.1)
 
     rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
     rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
@@ -529,94 +584,78 @@ def calcTS(TS, count):
     tsOutPath = os.path.join(quantumMechanics.settings.fileStore, tsName + outputFileExtension)
     ircInPath = os.path.join(quantumMechanics.settings.fileStore, tsName + 'IRC' + inputFileExtension)
     ircOutPath = os.path.join(quantumMechanics.settings.fileStore, tsName + 'IRC' + outputFileExtension)
+    tsOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'data' + str(count) + outputFileExtension)
 
-    # TS calculations
-    tsConverge = 0
-    if os.path.exists(tsOutPath):
-        tsConverge = checkOutput(tsOutPath)
-    else:
-        writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP)
-        run(executablePath, tsFilePath, qstOutPath)
-        trial = 1
-        while tsConverge == 0:
-            writeTSInputFile(tsFilePath, trial)
-            run(executablePath, tsFilePath, tsOutPath)
+    # If a data file exists, it was already successfully run
+    if not os.path.exists(tsOutputDataFile):
+        # TS calculations
+        tsConverge = 0
+        if os.path.exists(tsOutPath):
             tsConverge = checkOutput(tsOutPath)
-            trial += 1
+        else:
+            writeQST2InputFile(tsFilePath, rmolFilePathForCalc, pmolFilePathForCalc, geometryR, geometryP)
+            run(executablePath, tsFilePath, qstOutPath)
+            trial = 1
+            while tsConverge == 0:
+                writeTSInputFile(tsFilePath, trial)
+                run(executablePath, tsFilePath, tsOutPath)
+                tsConverge = checkOutput(tsOutPath)
+                trial += 1
 
-    if not os.path.exists(ircOutPath):
-        # Do the IRC calculation
-        writeIRCInput(ircInPath)
-        run(executablePath, ircInPath, ircOutPath)
+        if not os.path.exists(ircOutPath):
+            # Do the IRC calculation
+            writeIRCInput(ircInPath)
+            run(executablePath, ircInPath, ircOutPath)
 
-# def parseTS(TS, count):
-#     
-#     quantumMechanics = QMCalculator()
-#     quantumMechanics.settings.software = 'gaussian'
-#     quantumMechanics.settings.fileStore = 'QMfiles'
-#     quantumMechanics.settings.scratchDirectory = 'scratch'
-#     quantumMechanics.settings.onlyCyclics = False
-#     quantumMechanics.settings.maxRadicalNumber = 0
-#     
-#     reactant = fixSortLabel(TS[0])
-#     product = fixSortLabel(TS[1])
-#     
-#     tsName = 'transitionState' + str(count)
-#     tsOutPath = os.path.join(quantumMechanics.settings.fileStore, tsName + outputFileExtension)
-#     
-#     # TS file paths
-#     ircOutPath = os.path.join(quantumMechanics.settings.fileStore, tsName + 'IRC' + outputFileExtension)
+        notes = ''
 
-    notes = ''
+        ircCheck, notes = testGeometries(reactant, product, ircOutPath, notes)
 
-    ircCheck, notes = testGeometries(reactant, product, ircOutPath, notes)
+        if not os.path.exists(tsOutputDataFile) and ircCheck == 1:
+            # Split the reactants and products in order to calculate their energies
+            # and generate the geometries
+            rct1, rct2 = reactant.split()
 
-    if ircCheck == 1:
-        # Split the reactants and products in order to calculate their energies
-        # and generate the geometries
-        rct1, rct2 = reactant.split()
+            # rct1 = fixSortLabel(rct1)
+            # rct2 = fixSortLabel(rct2)
+            # 
+            # r1Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct1, quantumMechanics.settings)
+            # r2Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct2, quantumMechanics.settings)
+            # 
+            # r1Qmcalc.createGeometry()
+            # r2Qmcalc.createGeometry()
+            # 
+            # # Reactant and product file paths
+            # r1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + inputFileExtension)
+            # r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
+            # r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
+            # r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
+            # 
+            # # Run the optimizations
+            # r1Converge = 0 
+            # r2Converge = 0
+            # r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
+            # r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
 
-        # rct1 = fixSortLabel(rct1)
-        # rct2 = fixSortLabel(rct2)
-        # 
-        # r1Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct1, quantumMechanics.settings)
-        # r2Qmcalc = rmgpy.qm.gaussian.GaussianMolPM6(rct2, quantumMechanics.settings)
-        # 
-        # r1Qmcalc.createGeometry()
-        # r2Qmcalc.createGeometry()
-        # 
-        # # Reactant and product file paths
-        # r1InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + inputFileExtension)
-        # r1OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct1' + outputFileExtension)
-        # r2InPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + inputFileExtension)
-        # r2OutPath = os.path.join(quantumMechanics.settings.fileStore, str(count) + 'rct2' + outputFileExtension)
-        # 
-        # # Run the optimizations
-        # r1Converge = 0 
-        # r2Converge = 0
-        # r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
-        # r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
+            # # TS calculations
+            # tsConverge = 0
+            # if os.path.exists(tsOutPath):
+            #     tsConverge = checkOutput(tsOutPath)
 
-        # # TS calculations
-        # tsConverge = 0
-        # if os.path.exists(tsOutPath):
-        #     tsConverge = checkOutput(tsOutPath)
+            # # Check outputs
+            # rTest = tsConverge * r1Converge * r2Converge
+            # 
+            # Data file
 
-        # # Check outputs
-        # rTest = tsConverge * r1Converge * r2Converge
-        # 
-        # Data file
-        tsOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'data' + str(count) + outputFileExtension)
-
-        # # Parsing, so far just reading energies
-        # if tsConverge == 1:
-        #     if os.path.exists(rOutputDataFile):
-        #         pass
-        #     else:
-        #         parse(tsOutPath, rOutputDataFile, reactant, product, notes)
-        vibFreq, activeAts, atomDist = parse(tsOutPath, tsOutputDataFile, labels)
-        writeRxnOutputFile(tsOutputDataFile, reactant, product, vibFreq, activeAts, atomDist, notes)
-        # parse(tsOutPath, rOutputDataFile, reactant, product, notes)
+            # # Parsing, so far just reading energies
+            # if tsConverge == 1:
+            #     if os.path.exists(rOutputDataFile):
+            #         pass
+            #     else:
+            #         parse(tsOutPath, rOutputDataFile, reactant, product, notes)
+            vibFreq, activeAts, atomDist = parse(tsOutPath, tsOutputDataFile, labels)
+            writeRxnOutputFile(tsOutputDataFile, reactant, product, vibFreq, activeAts, atomDist, notes)
+            # parse(tsOutPath, rOutputDataFile, reactant, product, notes)
 
 def applyTST():
     """
