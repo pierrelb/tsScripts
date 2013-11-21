@@ -1,7 +1,7 @@
 import os
 
 import logging
-import cclib.parser
+import external.cclib.parser
 import openbabel
 import numpy
 from subprocess import Popen
@@ -29,7 +29,7 @@ reactRecipe = ReactionRecipe(actions)
 
 template = KineticsFamily(forwardRecipe=reactRecipe)
 
-trusted = open('/home/pierreb/Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py')
+trusted = open(os.path.join(os.getenv('HOME'),'Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py'))
 
 lines = trusted.readlines()
 k = 0
@@ -249,7 +249,7 @@ def writeReferenceFile(inputFilePath, molFilePathForCalc, geometry, attempt, out
         atomnos = numpy.array(atomnos, dtype=int)
         atomcoords = numpy.array(atomcoords)
         reload(openbabel)
-        mol = cclib.bridge.makeopenbabel(atomcoords, atomnos)
+        mol = external.cclib.bridge.makeopenbabel(atomcoords, atomnos)
     else:
         mol = openbabel.OBMol()
         obConversion.ReadFile(mol, molFilePathForCalc )
@@ -289,7 +289,7 @@ def writeSaddleInputFile(inputFilePath, reactantRefPath, productRefPath, geometr
     atomnos = numpy.array(atomnos, dtype=int)
     atomcoords = numpy.array(atomcoords)
     reload(openbabel)
-    molR = cclib.bridge.makeopenbabel(atomcoords, atomnos)
+    molR = external.cclib.bridge.makeopenbabel(atomcoords, atomnos)
     
     # product
     geomLines = parseArc(productRefPath)
@@ -314,7 +314,7 @@ def writeSaddleInputFile(inputFilePath, reactantRefPath, productRefPath, geometr
     atomnos = numpy.array(atomnos, dtype=int)
     atomcoords = numpy.array(atomcoords)
     reload(openbabel)
-    molP = cclib.bridge.makeopenbabel(atomcoords, atomnos)
+    molP = external.cclib.bridge.makeopenbabel(atomcoords, atomnos)
     
     obrConversion = openbabel.OBConversion()
     obrConversion.SetInAndOutFormats("mol", "mop")
@@ -368,10 +368,10 @@ def writeGeoRefInputFile(inputFilePath, molFilePathForCalc, refFilePath, geometr
 
 def writeDFTTSInputFile(inputFilePath, outputFile, count):
     
-    parseOutput = cclib.parser.Mopac(outputFile)
+    parseOutput = external.cclib.parser.Mopac(outputFile)
     parseOutput = parseOutput.parse()
     reload(openbabel)
-    mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
+    mol = external.cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
     mol.SetTotalSpinMultiplicity(2)
     obConversion = openbabel.OBConversion()
     obConversion.SetInAndOutFormats("mol", "gjf")
@@ -391,10 +391,10 @@ def writeTSInputFile(inputFilePath, saddleOutput, count):
     
     obConversion = openbabel.OBConversion()
     obConversion.SetInAndOutFormats("mol", "mop")
-    parseOutput = cclib.parser.Mopac(saddleOutput)
+    parseOutput = external.cclib.parser.Mopac(saddleOutput)
     parseOutput = parseOutput.parse()
     reload(openbabel)
-    mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
+    mol = external.cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
     mol.SetTitle('transitionState' + str(count))
     obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
     input_string = obConversion.WriteString(mol)
@@ -411,10 +411,10 @@ def writeTSInputFile(inputFilePath, saddleOutput, count):
 def writeIRC(inputFilePath, tsOutPath, count):
     obConversion = openbabel.OBConversion()
     obConversion.SetInAndOutFormats("mol", "mop")
-    parseOutput = cclib.parser.Mopac(tsOutPath)
+    parseOutput = external.cclib.parser.Mopac(tsOutPath)
     parseOutput = parseOutput.parse()
     reload(openbabel)
-    mol = cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
+    mol = external.cclib.bridge.makeopenbabel(parseOutput.atomcoords[0], parseOutput.atomnos)
     mol.SetTitle('transitionState' + str(count))
     obConversion.SetOptions('k', openbabel.OBConversion.OUTOPTIONS)
     input_string = obConversion.WriteString(mol)
@@ -460,7 +460,7 @@ def convertMol(geomLines):
     atomnos = numpy.array(atomnos, dtype=int)
     atomcoords = numpy.array(atomcoords)
     reload(openbabel)
-    mol = cclib.bridge.makeopenbabel(atomcoords, atomnos)
+    mol = external.cclib.bridge.makeopenbabel(atomcoords, atomnos)
     
     rmgMol = Molecule().fromOBMol(mol)
     
@@ -532,9 +532,9 @@ def getAtomType(atomnum):
     return atType
 
 def parse(tsOutput, output1, output2, outputDataFile, labels):
-    mol1Parse = cclib.parser.Mopac(output1)
-    mol2Parse = cclib.parser.Mopac(output2)
-    tsParse   = cclib.parser.Mopac(tsOutput)
+    mol1Parse = external.cclib.parser.Mopac(output1)
+    mol2Parse = external.cclib.parser.Mopac(output2)
+    tsParse   = external.cclib.parser.Mopac(tsOutput)
 
     parsed1 = mol1Parse.parse()
     parsed2 = mol2Parse.parse()
@@ -658,19 +658,39 @@ def calcTS(TS, count):
 
     rRDMol, rBM, rMult, rGeom = generateBoundsMatrix(reactant, quantumMechanics.settings)
     pRDMol, pBM, pMult, pGeom = generateBoundsMatrix(product, quantumMechanics.settings)
-
+    
+    # decrease the vdwRadii
+    for i in range(len(rBM)):
+        for k in range(len(rBM)):
+            if rBM[i][k] == 1000.0:
+                rBM[k][i] -= 1.2
+            if pBM[i][k] == 1000.0:
+                pBM[k][i] -= 1.2
+                
     #edit bounds distances to align reacting atoms
     if family.lower() == 'h_abstraction':
-        lbl1 = reactant.getLabeledAtom('*1').sortingLabel
-        lbl2 = reactant.getLabeledAtom('*2').sortingLabel
-        lbl3 = reactant.getLabeledAtom('*3').sortingLabel
+        at1 = reactant.getLabeledAtom('*1')
+        at2 = reactant.getLabeledAtom('*2')
+        at3 = reactant.getLabeledAtom('*3')
+        
+        lbl1 = at1.sortingLabel
+        lbl2 = at2.sortingLabel
+        lbl3 = at3.sortingLabel
+        
         labels = [lbl1, lbl2, lbl3]
 
-        rBM = editMatrix(rBM, lbl1, lbl3, 2.5, 0.1)
-        rBM = editMatrix(rBM, lbl2, lbl3, 2.0, 0.1)
-
-        pBM = editMatrix(pBM, lbl1, lbl2, 2.0, 0.1)
-        pBM = editMatrix(pBM, lbl1, lbl3, 2.5, 0.1)
+        if (at1.symbol == 'H' and at3.symbol == 'C') or (at1.symbol == 'C' and at3.symbol == 'H'):
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.2, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.2, 0.1)
+        elif (at1.symbol == 'H' and at3.symbol == 'O') or (at1.symbol == 'O' and at3.symbol == 'H'):
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.1, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.1, 0.1)
+        elif at1.symbol == 'O' and at3.symbol == 'O':
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.2, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.2, 0.1)
+        else:
+            rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.5, 0.1)
+            pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.5, 0.1)
 
     rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
     rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
@@ -694,7 +714,9 @@ def calcTS(TS, count):
     atoms = len(pGeom.molecule.atoms)
     distGeomAttempts=1
     if atoms > 3:#this check prevents the number of attempts from being negative
-        distGeomAttempts = 5*(atoms-3) #number of conformer attempts is just a linear scaling with molecule size, due to time considerations in practice, it is probably more like 3^(n-3) or something like that
+        distGeomAttempts = 5*(atoms-3) # number of conformer attempts is just a linear scaling with molecule size, 
+                                       # due to time considerations in practice, it is 
+                                       # probably more like 3^(n-3) or something like that
 
     pGeom.rd_embed(pRDMol, distGeomAttempts, pBM)
 
@@ -855,9 +877,5 @@ def calcDFTTS(TS, count):
     run(executablePath2, tsDFTInPath, tsDFTOutPath)
         
 ########################################################################################
-count = 0
-for TS in tsStructures:
-    # calcTS(TS, count)
-    if count > 212 and count < 217: 
-        calcDFTTS(TS, count)
-    count += 1
+for count, TS in enumerate(tsStructures):
+    calcTS(TS, count)
