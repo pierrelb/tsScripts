@@ -1,17 +1,23 @@
 import os
-
 import logging
 import external.cclib.parser
 import openbabel
-import numpy
+import time
 from subprocess import Popen
 from collections import defaultdict, Counter
+from copy import deepcopy
 
 import rmgpy
 from rmgpy.molecule import Molecule
+from rmgpy.reaction import Reaction
 from rmgpy.qm.main import QMCalculator
 from rmgpy.qm.molecule import Geometry
-from rmgpy.data.kinetics import KineticsFamily, ReactionRecipe
+from rmgpy.qm.reaction import QMReaction
+from rmgpy.data.base import Entry
+from rmgpy.data.kinetics import KineticsFamily, ReactionRecipe, saveEntry
+from rmgpy.data.kinetics.transitionstates import TransitionStates, DistanceData
+
+from rmgpy.qm.gaussian import GaussianTSB3LYP
 
 import rdkit
 
@@ -30,6 +36,12 @@ reactRecipe = ReactionRecipe(actions)
 template = KineticsFamily(forwardRecipe=reactRecipe)
 
 trusted = open(os.path.join(os.getenv('HOME'),'Code/RMG-database/input/kinetics/families/H_Abstraction/NIST.py'))
+
+tsPath = os.path.join(os.getenv('HOME'), 'Code/RMG-database/input/kinetics/families/H_Abstraction')
+local_context = None
+global_context = None
+transitionStates = TransitionStates()
+transitionStates.load(tsPath, local_context, global_context)
 
 lines = trusted.readlines()
 k = 0
@@ -74,7 +86,42 @@ for idx in range(1, len(reactants1) + 1):
         prevReactions.append(rxnInChI)
         tsStructures.append(tsStruct)
 
-########################################################################################    
+########################################################################################
+def fixSortLabel(molecule):
+    """
+    This may not be required anymore. Was needed as when molecules were created, the
+    rmg sorting labels would be set after where we tried to generate the TS.
+    """
+    sortLbl = 0
+    for vertex in molecule.vertices:
+        vertex.sortingLabel = sortLbl
+        sortLbl += 1
+    return molecule
+
+def calculate(TS, count):
+    quantumMechanics = QMCalculator()
+    quantumMechanics.settings.software = 'mopac'
+    quantumMechanics.settings.fileStore = 'QMfiles'
+    quantumMechanics.settings.scratchDirectory = 'scratch'
+    quantumMechanics.settings.onlyCyclics = False
+    quantumMechanics.settings.maxRadicalNumber = 0
+
+    reactant = fixSortLabel(TS[0])
+    product = fixSortLabel(TS[1])
+
+    reaction = Reaction(label='H_Abstraction', reactants=reactant.split(), products=product.split(), reversible=True)
+
+    qmReaction = MopacPM7(reaction, quantumMechanics.settings)
+
+    qmReaction.generateGeometry()
+
+
+
+for count, TS in enumerate(tsStructures):
+    calculate(TS, count)
+    count += 1
+
+########################################################################################        
 inputFileExtension = '.mop'
 inputFileExtension2 = '.gjf'
 outputFileExtension = '.out'
@@ -495,13 +542,49 @@ def parseIRC(ircOutput, reactant, product):
     else:
         return 0
 
-def editMatrix(bm, lbl1, lbl2, num, diff):
-    if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
-        bm[lbl2][lbl1] = num
-        bm[lbl1][lbl2] = bm[lbl2][lbl1] + diff
+def editMatrix(bm, lbl1, lbl2, lbl3, num, diff):
+    if bm[lbl1][lbl3] > bm[lbl3][lbl1]:
+        bm[lbl3][lbl1] = num
+        bm[lbl1][lbl3] = num + diff
     else:
-        bm[lbl1][lbl2] = num
-        bm[lbl2][lbl1] = bm[lbl1][lbl2] + diff
+        bm[lbl3][lbl1] = num + diff
+        bm[lbl1][lbl3] = num
+
+    # if bm[lbl2][lbl3] == 1000. or bm[lbl3][lbl2] == 1000.:
+    #     checkSide = True
+    # else:
+    #     checkSide = False
+    # 
+    # if checkSide:
+    #     if bm[lbl2][lbl3] > bm[lbl3][lbl2]:
+    #         if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
+    #             bm[lbl3][lbl2] = num - bm[lbl2][lbl1] - diff / 2.0
+    #             bm[lbl2][lbl3] = num - bm[lbl1][lbl2] + diff / 2.0
+    #         else:
+    #             bm[lbl3][lbl2] = num - bm[lbl1][lbl2] - diff / 2.0
+    #             bm[lbl2][lbl3] = num - bm[lbl2][lbl1] + diff / 2.0
+    #     else:
+    #         if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
+    #             bm[lbl2][lbl3] = num - bm[lbl2][lbl1] - diff / 2.0
+    #             bm[lbl3][lbl2] = num - bm[lbl1][lbl2] + diff / 2.0
+    #         else:
+    #             bm[lbl2][lbl3] = num - bm[lbl1][lbl2] - diff / 2.0
+    #             bm[lbl3][lbl2] = num - bm[lbl2][lbl1] + diff / 2.0
+    # else:
+    #     if bm[lbl1][lbl2] > bm[lbl2][lbl1]:
+    #         if bm[lbl2][lbl3] > bm[lbl3][lbl2]:
+    #             bm[lbl2][lbl1] = num - bm[lbl3][lbl2] - diff / 2.0
+    #             bm[lbl1][lbl2] = num - bm[lbl2][lbl3] + diff / 2.0
+    #         else:
+    #             bm[lbl2][lbl1] = num - bm[lbl2][lbl3] - diff / 2.0
+    #             bm[lbl1][lbl2] = num - bm[lbl3][lbl2] + diff / 2.0
+    #     else:
+    #         if bm[lbl2][lbl3] > bm[lbl3][lbl2]:
+    #             bm[lbl1][lbl2] = num - bm[lbl3][lbl2] - diff / 2.0
+    #             bm[lbl2][lbl1] = num - bm[lbl2][lbl3] + diff / 2.0
+    #         else:
+    #             bm[lbl1][lbl2] = num - bm[lbl2][lbl3] - diff / 2.0
+    #             bm[lbl2][lbl1] = num - bm[lbl3][lbl2] + diff / 2.0
 
     return bm
 
@@ -659,14 +742,14 @@ def calcTS(TS, count):
     rRDMol, rBM, rMult, rGeom = generateBoundsMatrix(reactant, quantumMechanics.settings)
     pRDMol, pBM, pMult, pGeom = generateBoundsMatrix(product, quantumMechanics.settings)
     
-    # decrease the vdwRadii
-    for i in range(len(rBM)):
-        for k in range(len(rBM)):
-            if rBM[i][k] == 1000.0:
-                rBM[k][i] -= 1.2
-            if pBM[i][k] == 1000.0:
-                pBM[k][i] -= 1.2
-                
+    # # decrease the vdwRadii
+    # for i in range(len(rBM)):
+    #     for k in range(len(rBM)):
+    #         if rBM[i][k] == 1000.0:
+    #             rBM[k][i] -= 1.2
+    #         if pBM[i][k] == 1000.0:
+    #             pBM[k][i] -= 1.2
+            
     #edit bounds distances to align reacting atoms
     if family.lower() == 'h_abstraction':
         at1 = reactant.getLabeledAtom('*1')
@@ -691,158 +774,187 @@ def calcTS(TS, count):
         else:
             rBM = editMatrix(rBM, lbl1, lbl2, lbl3, 2.5, 0.1)
             pBM = editMatrix(pBM, lbl3, lbl2, lbl1, 2.5, 0.1)
-
-    rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
-    rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
-
-    rsorted_atom_list = reactant.vertices[:]
-    qmcalcR = rmgpy.qm.mopac.MopacMolPM7(reactant, quantumMechanics.settings)
-    reactant.vertices = rsorted_atom_list
-
-    psorted_atom_list = product.vertices[:]
-    qmcalcP = rmgpy.qm.mopac.MopacMolPM7(product, quantumMechanics.settings)
-    product.vertices = psorted_atom_list
-
-    qmcalcR.createGeometry(rBM)
-    # take the reactant geometry and apply the product bounds matrix
-    # this should prevent non-reacting atom overlap
-    rRDMol = rdkit.Chem.MolFromMolFile(rGeom.getCrudeMolFilePath(), removeHs=False)
-
-    for atom in reactant.atoms:
-        i = atom.sortingLabel
-        pRDMol.GetConformer(0).SetAtomPosition(i, rRDMol.GetConformer(0).GetAtomPosition(i))
-    atoms = len(pGeom.molecule.atoms)
-    distGeomAttempts=1
-    if atoms > 3:#this check prevents the number of attempts from being negative
-        distGeomAttempts = 5*(atoms-3) # number of conformer attempts is just a linear scaling with molecule size, 
-                                       # due to time considerations in practice, it is 
-                                       # probably more like 3^(n-3) or something like that
-
-    pGeom.rd_embed(pRDMol, distGeomAttempts, pBM)
-
-    qmcalcP.geometry = pGeom
-
-    geometryR = qmcalcR.geometry
-    geometryP = qmcalcP.geometry
-
-    rinputFilePath = qmcalcR.inputFilePath
-    routputFilePath = qmcalcR.outputFilePath
-    rmolFilePathForCalc = qmcalcR.getMolFilePathForCalculation(attempt)
-
-    pinputFilePath = qmcalcP.inputFilePath
-    poutputFilePath = qmcalcR.outputFilePath
-    pmolFilePathForCalc = qmcalcP.getMolFilePathForCalculation(attempt)
-    inputFilePath = rinputFilePath
-    outputFilePath = poutputFilePath
     
-    # TS file paths
-    rRefInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rRef' + inputFileExtension)
-    grefInPath1 = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'pGeo' + inputFileExtension)
-    pRefInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'pRef' + inputFileExtension)
-    grefInPath2 = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rGeo' + inputFileExtension)
-    saddleInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'saddleCalc' + inputFileExtension)
-    tsoptInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'tsopt' + inputFileExtension)
-    tsInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'transitionState' + inputFileExtension)
-    ircInput = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'irc' + inputFileExtension)
+    sect = len(reactant.split()[1].atoms)
     
-    grefOutPath1 = grefInPath1.split('.')[0] + outputFileExtension
-    grefOutPath2 = grefInPath2.split('.')[0] + outputFileExtension
-    saddleOutPath = saddleInPath.split('.')[0] + outputFileExtension
-    tsoptOutPath = tsoptInPath.split('.')[0] + outputFileExtension
-    tsOutPath = tsInPath.split('.')[0] + outputFileExtension
-    ircOutput = ircInput.split('.')[0] + outputFileExtension
+    for i in range(sect,len(rBM)):
+        for j in range(0,sect):
+            for k in range(len(rBM)):
+                if k==i or k==j: continue
+                Uik = rBM[i,k] if k>i else rBM[k,i]
+                Ukj = rBM[j,k] if k>j else rBM[k,j]
+                
+                maxLij = Uik + Ukj - 0.15
+                if rBM[i,j] >  maxLij:
+                    # print "CHANGING {0} to {1}".format(rBM[i,j], maxLij)
+                    rBM[i,j] = maxLij
     
-    if os.path.exists(tsOutPath):
-        pass
-    else:
-        # Write the reactant and product files and have them reference each other
-        writeReferenceFile(rRefInPath, rmolFilePathForCalc, geometryR, attempt)
-        writeGeoRefInputFile(grefInPath1, pmolFilePathForCalc, rRefInPath, geometryP)
-        run(executablePath, grefInPath1, grefOutPath1)
+    for i in range(sect,len(pBM)):
+        for j in range(0,sect):
+            for k in range(len(pBM)):
+                if k==i or k==j: continue
+                Uik = pBM[i,k] if k>i else pBM[k,i]
+                Ukj = pBM[j,k] if k>j else pBM[k,j]
+                
+                maxLij = Uik + Ukj - 0.15
+                if pBM[i,j] >  maxLij:
+                    # print "CHANGING {0} to {1}".format(pBM[i,j], maxLij)
+                    pBM[i,j] = maxLij
+
+    setRBM = rdkit.DistanceGeometry.DoTriangleSmoothing(rBM)
+    setPBM = rdkit.DistanceGeometry.DoTriangleSmoothing(pBM)
+
+    if setRBM and setPBM:
+        rsorted_atom_list = reactant.vertices[:]
+        qmcalcR = rmgpy.qm.mopac.MopacMolPM7(reactant, quantumMechanics.settings)
+        reactant.vertices = rsorted_atom_list
+
+        psorted_atom_list = product.vertices[:]
+        qmcalcP = rmgpy.qm.mopac.MopacMolPM7(product, quantumMechanics.settings)
+        product.vertices = psorted_atom_list
+
+        qmcalcR.createGeometry(rBM)
+        # take the reactant geometry and apply the product bounds matrix
+        # this should prevent non-reacting atom overlap
+        rRDMol = rdkit.Chem.MolFromMolFile(rGeom.getCrudeMolFilePath(), removeHs=False)
+
+        for atom in reactant.atoms:
+            i = atom.sortingLabel
+            pRDMol.GetConformer(0).SetAtomPosition(i, rRDMol.GetConformer(0).GetAtomPosition(i))
+        atoms = len(pGeom.molecule.atoms)
+        distGeomAttempts=15
+        if atoms > 3:#this check prevents the number of attempts from being negative
+            distGeomAttempts = 15*(atoms-3) # number of conformer attempts is just a linear scaling with molecule size, 
+                                           # due to time considerations in practice, it is 
+                                           # probably more like 3^(n-3) or something like that
+
+        pGeom.rd_embed(pRDMol, distGeomAttempts, pBM)
+
+        qmcalcP.geometry = pGeom
+
+        geometryR = qmcalcR.geometry
+        geometryP = qmcalcP.geometry
+
+        rinputFilePath = qmcalcR.inputFilePath
+        routputFilePath = qmcalcR.outputFilePath
+        rmolFilePathForCalc = qmcalcR.getMolFilePathForCalculation(attempt)
+
+        pinputFilePath = qmcalcP.inputFilePath
+        poutputFilePath = qmcalcR.outputFilePath
+        pmolFilePathForCalc = qmcalcP.getMolFilePathForCalculation(attempt)
+        inputFilePath = rinputFilePath
+        outputFilePath = poutputFilePath
         
-        # Write the product input file that references the reactant
-        writeReferenceFile(pRefInPath, pmolFilePathForCalc, geometryP, attempt, outputFile=grefOutPath1)
-        writeGeoRefInputFile(grefInPath2, rmolFilePathForCalc, pRefInPath, geometryR)
-        run(executablePath, grefInPath2, grefOutPath2)
+        # TS file paths
+        rRefInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rRef' + inputFileExtension)
+        grefInPath1 = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'pGeo' + inputFileExtension)
+        pRefInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'pRef' + inputFileExtension)
+        grefInPath2 = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rGeo' + inputFileExtension)
+        saddleInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'saddleCalc' + inputFileExtension)
+        tsoptInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'tsopt' + inputFileExtension)
+        tsInPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'transitionState' + inputFileExtension)
+        ircInput = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'irc' + inputFileExtension)
         
-        # Write the saddle calculation using outputs from both geo ref calcs
-        writeSaddleInputFile(saddleInPath, grefOutPath1, grefOutPath2, geometryR, geometryP)
-        run(executablePath, saddleInPath, saddleOutPath)
+        grefOutPath1 = grefInPath1.split('.')[0] + outputFileExtension
+        grefOutPath2 = grefInPath2.split('.')[0] + outputFileExtension
+        saddleOutPath = saddleInPath.split('.')[0] + outputFileExtension
+        tsoptOutPath = tsoptInPath.split('.')[0] + outputFileExtension
+        tsOutPath = tsInPath.split('.')[0] + outputFileExtension
+        ircOutput = ircInput.split('.')[0] + outputFileExtension
         
-        # Write TS calculation
-        writeTSInputFile(tsInPath, saddleOutPath, count)
-        run(executablePath, tsInPath, tsOutPath)
-    
-    tsConverge = checkOutput(tsOutPath)
-    rightGeom = 0
-    # Conduct IRC calculation and validate resulting geometries
-    if tsConverge == 1:
-        writeIRC(ircInput, tsOutPath, count)
-        run(executablePath, ircInput, ircOutput)
-        rightGeom = parseIRC(ircOutput, reactant, product)
-    else:
-        notes = notes + 'Transition state not converged: '
-    
-    r1Converge = 0
-    r2Converge = 0
-    if rightGeom == 1:
-        # Split the reactants and products in order to calculate their energies
-        # and generate the geometries
-        
-        rct1, rct2 = reactant.split()
-        
-        rct1 = fixSortLabel(rct1)
-        rct2 = fixSortLabel(rct2)
-        
-        r1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct1, quantumMechanics.settings)
-        r2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct2, quantumMechanics.settings)
-        
-        r1Qmcalc.createGeometry()
-        r2Qmcalc.createGeometry()
-        
-        # Reactant and product file paths
-        r1InPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct1' + inputFileExtension)
-        r1OutPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct1' + outputFileExtension)
-        r2InPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct2' + inputFileExtension)
-        r2OutPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct2' + outputFileExtension)
-        
-        # Run the optimizations
-        if len(rct1.atoms)==1:
-            run(executablePath, r1InPath, r1OutPath)
-            r1Converge = 1
-        else:
-            r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
-            if r1Converge != 1:
-                notes = notes + 'Failure at reactant 1: '
-        if len(rct2.atoms)==1:
-            run(executablePath, r2InPath, r2OutPath)
-            r2Converge = 1
-        else:
-            r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
-            if r2Converge != 1:
-                notes = notes + 'Failure at reactant 2: '
-    else:
-        notes = notes + 'Failure at IRC: '
-        
-    # Check outputs
-    rTest = tsConverge * r1Converge * r2Converge
-    
-    # Data file
-    rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'data' + fileNum + outputFileExtension)
-    
-    # Parsing, so far just reading energies
-    if rTest == 1:
-        if os.path.exists(rOutputDataFile):
+        if os.path.exists(tsOutPath):
             pass
         else:
-            deltaE, vibFreq, activeAts, atomDist = parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, labels)
+            # Write the reactant and product files and have them reference each other
+            writeReferenceFile(rRefInPath, rmolFilePathForCalc, geometryR, attempt)
+            writeGeoRefInputFile(grefInPath1, pmolFilePathForCalc, rRefInPath, geometryP)
+            run(executablePath, grefInPath1, grefOutPath1)
+            
+            # Write the product input file that references the reactant
+            writeReferenceFile(pRefInPath, pmolFilePathForCalc, geometryP, attempt, outputFile=grefOutPath1)
+            writeGeoRefInputFile(grefInPath2, rmolFilePathForCalc, pRefInPath, geometryR)
+            run(executablePath, grefInPath2, grefOutPath2)
+            
+            # Write the saddle calculation using outputs from both geo ref calcs
+            writeSaddleInputFile(saddleInPath, grefOutPath1, grefOutPath2, geometryR, geometryP)
+            run(executablePath, saddleInPath, saddleOutPath)
+            
+            # Write TS calculation
+            writeTSInputFile(tsInPath, saddleOutPath, count)
+            run(executablePath, tsInPath, tsOutPath)
+        
+        tsConverge = checkOutput(tsOutPath)
+        rightGeom = 0
+        # Conduct IRC calculation and validate resulting geometries
+        if tsConverge == 1:
+            writeIRC(ircInput, tsOutPath, count)
+            run(executablePath, ircInput, ircOutput)
+            rightGeom = parseIRC(ircOutput, reactant, product)
+        else:
+            notes = notes + 'Transition state not converged: '
+        
+        r1Converge = 0
+        r2Converge = 0
+        if rightGeom == 1:
+            # Split the reactants and products in order to calculate their energies
+            # and generate the geometries
+            
+            rct1, rct2 = reactant.split()
+            
+            rct1 = fixSortLabel(rct1)
+            rct2 = fixSortLabel(rct2)
+            
+            r1Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct1, quantumMechanics.settings)
+            r2Qmcalc = rmgpy.qm.mopac.MopacMolPM7(rct2, quantumMechanics.settings)
+            
+            r1Qmcalc.createGeometry()
+            r2Qmcalc.createGeometry()
+            
+            # Reactant and product file paths
+            r1InPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct1' + inputFileExtension)
+            r1OutPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct1' + outputFileExtension)
+            r2InPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct2' + inputFileExtension)
+            r2OutPath = os.path.join(quantumMechanics.settings.fileStore, fileNum + 'rct2' + outputFileExtension)
+            
+            # Run the optimizations
+            if len(rct1.atoms)==1:
+                run(executablePath, r1InPath, r1OutPath)
+                r1Converge = 1
+            else:
+                r1Converge = optimizeGeom(r1OutPath, r1InPath, r1Qmcalc)
+                if r1Converge != 1:
+                    notes = notes + 'Failure at reactant 1: '
+            if len(rct2.atoms)==1:
+                run(executablePath, r2InPath, r2OutPath)
+                r2Converge = 1
+            else:
+                r2Converge = optimizeGeom(r2OutPath, r2InPath, r2Qmcalc)
+                if r2Converge != 1:
+                    notes = notes + 'Failure at reactant 2: '
+        else:
+            notes = notes + 'Failure at IRC: '
+        
+        # Check outputs
+        rTest = tsConverge * r1Converge * r2Converge
+        
+        # Data file
+        rOutputDataFile = os.path.join(quantumMechanics.settings.fileStore, 'data' + fileNum + outputFileExtension)
+        
+        # Parsing, so far just reading energies
+        if rTest == 1:
+            if os.path.exists(rOutputDataFile):
+                pass
+            else:
+                deltaE, vibFreq, activeAts, atomDist = parse(tsOutPath, r1OutPath, r2OutPath, rOutputDataFile, labels)
+        else:
+            deltaE = 'Failed run'
+            vibFreq = 'Failed run'
+            activeAts = ['Failed run', 'Failed run', 'Failed run']
+            atomDist = ['Failed run', 'Failed run', 'Failed run']
+        
+        writeRxnOutputFile(rOutputDataFile, reactant, product, deltaE, vibFreq, activeAts, atomDist, notes)
     else:
-        deltaE = 'Failed run'
-        vibFreq = 'Failed run'
-        activeAts = ['Failed run', 'Failed run', 'Failed run']
-        atomDist = ['Failed run', 'Failed run', 'Failed run']
-    
-    writeRxnOutputFile(rOutputDataFile, reactant, product, deltaE, vibFreq, activeAts, atomDist, notes)
+        print count
 
 def calcDFTTS(TS, count):
     quantumMechanics = QMCalculator()
@@ -878,4 +990,10 @@ def calcDFTTS(TS, count):
         
 ########################################################################################
 for count, TS in enumerate(tsStructures):
-    calcTS(TS, count)
+    letsRun = False
+    for testMol in TS[0].split():
+        if testMol.toSMILES() == '[H][H]' or testMol.toSMILES() == '[H]':
+            letsRun = True
+    
+    if letsRun:
+        calcTS(TS, count)
