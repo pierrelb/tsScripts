@@ -29,7 +29,6 @@ def loadTraining(index,
 			  	 shortDesc='',
 			  	 longDesc='',
 			  	 rank=None,
-			  	 history=None
 			  	 ):
 	
 	reactants = [Molecule().fromAdjacencyList(reactant1, saturateH=True)]
@@ -57,7 +56,6 @@ def loadTraining(index,
 			shortDesc = shortDesc,
 			longDesc = longDesc.strip(),
 			rank = rank,
-			history = history or [],
 		)
 		reactionList.append(reaction)
 		entries['{0:d}:{1}'.format(index,label)] = entry
@@ -78,7 +76,6 @@ def loadEntry(index,
 			  shortDesc='',
 			  longDesc='',
 			  rank=None,
-			  history=None
 			  ):
 	
 	reactants = [Molecule().fromAdjacencyList(reactant1, saturateH=True)]
@@ -108,7 +105,6 @@ def loadEntry(index,
 			shortDesc = shortDesc,
 			longDesc = longDesc.strip(),
 			rank = rank,
-			history = history or [],
 		)
 		entries['{0:d}:{1}'.format(index,label)] = entry
 		return entry
@@ -140,12 +136,8 @@ def saveEntries(entryList):
 			resultFile.write('    referenceType = "",\n')
 			resultFile.write('    rank = 3,\n')
 			resultFile.write('    shortDesc = u"""{0!s}""",\n'.format(entry.shortDesc))
-			resultFile.write('    longDesc = \nu"""{0!s}\n""",\n'.format(entry.longDesc))
-			resultFile.write('    history = [\n')
-			for historyItem in entry.history:
-				resultFile.write('        {0},\n'.format(historyItem))
-			resultFile.write('    ],\n)\n\n')
-
+			resultFile.write('    longDesc = \nu"""{0!s}\n""",\n)\n\n'.format(entry.longDesc))
+			
 # global_context = None
 # local_context = None
 
@@ -168,7 +160,7 @@ def saveEntries(entryList):
 
 entries = {}
 reactionList = []
-filePath = os.path.join(os.getenv('HOME'),'scripts/gaussian/DIPK/TS_training.py')
+filePath = os.path.abspath(os.path.join(os.getenv('RMGpy'),'../RMG-database/input/kinetics/families/H_Abstraction/TS_training.py'))
 
 with open(filePath) as resultFile:
 	global_context = { '__builtins__': None }
@@ -183,23 +175,23 @@ with open(filePath) as resultFile:
 	}
 	exec resultFile in global_context, local_context
 
-for i in range(1507):
-	newpath = os.path.join('QMfiles', str(i+1))
-	if os.path.exists(newpath):
-		for files in os.listdir(newpath):
-			if files.endswith('.data'):
-				with open(os.path.join(newpath, files)) as resultFile:
-					global_context = { '__builtins__': None }
-					local_context = {
-						'__builtins__': None,
-						'True': True,
-						'False': False,
-						'entry': loadEntry,
-						'DistanceData': DistanceData,
-						'array': numpy.array,
-						'int32': numpy.int32,
-					}
-					exec resultFile in global_context, local_context
+# for i in range(1507):
+#     newpath = os.path.join('QMfiles', str(i+1))
+#     if os.path.exists(newpath):
+#         for files in os.listdir(newpath):
+#             if files.endswith('.data'):
+#                 with open(os.path.join(newpath, files)) as resultFile:
+#                     global_context = { '__builtins__': None }
+#                     local_context = {
+#                         '__builtins__': None,
+#                         'True': True,
+#                         'False': False,
+#                         'entry': loadEntry,
+#                         'DistanceData': DistanceData,
+#                         'array': numpy.array,
+#                         'int32': numpy.int32,
+#                     }
+#                     exec resultFile in global_context, local_context
 
 saveEntries(entries)
 			

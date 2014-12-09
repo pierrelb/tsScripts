@@ -29,7 +29,6 @@ def loadTraining(index,
 			  	 shortDesc='',
 			  	 longDesc='',
 			  	 rank=None,
-			  	 history=None
 			  	 ):
 	
 	reactants = [Molecule().fromAdjacencyList(reactant1, saturateH=True)]
@@ -57,7 +56,6 @@ def loadTraining(index,
 			shortDesc = shortDesc,
 			longDesc = longDesc.strip(),
 			rank = rank,
-			history = history or [],
 		)
 		reactionList.append(reaction)
 		entries['{0:d}:{1}'.format(index,label)] = entry
@@ -87,7 +85,6 @@ def duplicate(item):
 		shortDesc = 'Reverse reaction for reaction index {0}'.format(item.index),
 		longDesc = item.longDesc.strip(),
 		rank = item.rank,
-		history = item.history or [],
 	)
 	
 	entries['{0:d}:{1}'.format(len(entries) + 1,item.label)] = entry
@@ -109,7 +106,6 @@ def loadEntry(index,
 			  shortDesc='',
 			  longDesc='',
 			  rank=None,
-			  history=None
 			  ):
 	
 	reactants = [Molecule().fromAdjacencyList(reactant1, saturateH=True)]
@@ -139,7 +135,6 @@ def loadEntry(index,
 			shortDesc = shortDesc,
 			longDesc = longDesc.strip(),
 			rank = rank,
-			history = history or [],
 		)
 		entries['{0:d}:{1}'.format(index,label)] = entry
 		return entry
@@ -171,11 +166,7 @@ def saveEntries(entryList):
 			resultFile.write('    referenceType = "",\n')
 			resultFile.write('    rank = 3,\n')
 			resultFile.write('    shortDesc = u"""{0!s}""",\n'.format(entry.shortDesc))
-			resultFile.write('    longDesc = \nu"""{0!s}\n""",\n'.format(entry.longDesc))
-			resultFile.write('    history = [\n')
-			for historyItem in entry.history:
-				resultFile.write('        {0},\n'.format(historyItem))
-			resultFile.write('    ],\n)\n\n')
+			resultFile.write('    longDesc = \nu"""{0!s}\n""",\n)\n\n'.format(entry.longDesc))
 
 # global_context = None
 # local_context = None
