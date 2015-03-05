@@ -61,13 +61,16 @@ def loadTraining(index,
 		entries['{0:d}:{1}'.format(index,label)] = entry
 		return entry
 
-def duplicate(item):
+def duplicate(item, family):
 	
 	newItem = deepcopy(item)
 	newDist = deepcopy(newItem.data.distances)
-	# for H_abstraction
-	newDist['d12'] = item.data.distances['d23']
-	newDist['d23'] = item.data.distances['d12']
+	if family.lower()=='h_abstraction':
+		newDist['d12'] = item.data.distances['d23']
+		newDist['d23'] = item.data.distances['d12']
+	elif family.lower()=='intra_h_migration':
+		newDist['d13'] = item.data.distances['d23']
+		newDist['d23'] = item.data.distances['d13']
 	
 	newItem.data.distances = newDist
 	
@@ -139,14 +142,14 @@ def loadEntry(index,
 		entries['{0:d}:{1}'.format(index,label)] = entry
 		return entry
 
-def saveEntries(entryList):
+def saveEntries(entryList, family):
 	"""
 	Save the entries.
 	"""
 	with open('TS_training_duplicate.py', 'w') as resultFile:
 		resultFile.write('#!/usr/bin/env python\n')
 		resultFile.write('# encoding: utf-8\n\n')
-		resultFile.write('name = "H_Abstraction/TS_training"\n')
+		resultFile.write('name = "{0}/TS_training"\n'.format(family))
 		resultFile.write('shortDesc = u"Distances used to train group additivity values for TS geometries"\n')
 		resultFile.write('longDesc = u"""\nPut interatomic distances for reactions to use as a training set for fitting\ngroup additivity values in this file.\n"""\n')
 		resultFile.write('recommended = True\n\n')
@@ -155,9 +158,11 @@ def saveEntries(entryList):
 			resultFile.write('entry(\n')
 			resultFile.write('    index = {0},\n'.format(entry.index))
 			resultFile.write('    reactant1 = """\n{0!s}""",\n'.format(entry.item.reactants[0].toAdjacencyList()))
-			resultFile.write('    reactant2 = """\n{0!s}""",\n'.format(entry.item.reactants[1].toAdjacencyList()))
+			if len(entry.item.reactants)==2:
+				resultFile.write('    reactant2 = """\n{0!s}""",\n'.format(entry.item.reactants[1].toAdjacencyList()))
 			resultFile.write('    product1 = """\n{0!s}""",\n'.format(entry.item.products[0].toAdjacencyList()))
-			resultFile.write('    product2 = """\n{0!s}""",\n'.format(entry.item.products[1].toAdjacencyList()))
+			if len(entry.item.products)==2:
+				resultFile.write('    product2 = """\n{0!s}""",\n'.format(entry.item.products[1].toAdjacencyList()))
 			resultFile.write('    distances = DistanceData(\n')
 			resultFile.write('        distances = {0},\n'.format(entry.data.distances))
 			resultFile.write('        method = "{0!s}",\n'.format(entry.data.method))
@@ -191,6 +196,14 @@ def saveEntries(entryList):
 entries = {}
 reactionList = []
 filePath = 'TS_training.py'
+family = None
+with open(filePath, 'r') as trainingFile:
+	trainingLines = trainingFile.readlines()
+	for line in trainingLines:
+		if line.startswith('name = '):
+			family = line.split('/')[0].split('"')[1]
+			break
+
 
 with open(filePath) as resultFile:
 	global_context = { '__builtins__': None }
@@ -208,7 +221,7 @@ with open(filePath) as resultFile:
 
 for i in range(len(entries)):
 	item = entries[str(i+1) + ':']
-	duplicate(item)
+	duplicate(item, family)
 	
 # for i in range(334):
 #     newpath = os.path.join('QMfiles', str(i+1))
@@ -227,5 +240,5 @@ for i in range(len(entries)):
 #                 }
 #                 exec resultFile in global_context, local_context
 
-saveEntries(entries)
+saveEntries(entries, family)
 			
